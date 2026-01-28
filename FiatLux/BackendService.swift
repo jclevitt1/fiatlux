@@ -82,9 +82,11 @@ class BackendService {
     }
 
     /// Trigger processing for an uploaded file
-    /// - Parameter filePath: Full path including raw/, e.g., "raw/Notes/my_note.pdf"
+    /// - Parameters:
+    ///   - filePath: Full path including raw/, e.g., "raw/Notes/my_note.pdf"
+    ///   - projectId: Optional project ID for existing_project mode
     /// - Returns: TriggerResponse with job info, or nil if trigger endpoint not available
-    func trigger(filePath: String) async -> TriggerResponse? {
+    func trigger(filePath: String, projectId: String? = nil) async -> TriggerResponse? {
         guard let url = URL(string: "\(baseURL)/trigger") else {
             return nil
         }
@@ -93,9 +95,13 @@ class BackendService {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "file_path": filePath
         ]
+
+        if let projectId = projectId {
+            body["project_id"] = projectId
+        }
 
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -113,6 +119,91 @@ class BackendService {
             print("Trigger failed (non-fatal): \(error)")
             return nil
         }
+    }
+
+    // MARK: - Projects
+
+    struct Project: Codable, Identifiable {
+        let project_id: String
+        let name: String
+        let file_count: Int
+        let last_modified: String?
+
+        var id: String { project_id }
+    }
+
+    struct ProjectListResponse: Codable {
+        let projects: [Project]
+    }
+
+    struct ProjectFile: Codable, Identifiable {
+        let id: String
+        let name: String
+        let path: String
+        let mime_type: String?
+        let size: Int?
+    }
+
+    struct ProjectFilesResponse: Codable {
+        let project_id: String
+        let files: [ProjectFile]
+    }
+
+    /// List all available projects from storage
+    /// - Parameter search: Optional search query to filter by name
+    /// - Returns: List of projects
+    func listProjects(search: String? = nil) async throws -> [Project] {
+        var components = URLComponents(string: "\(baseURL)/projects")
+        if let search = search, !search.isEmpty {
+            components?.queryItems = [URLQueryItem(name: "search", value: search)]
+        }
+
+        guard let url = components?.url else {
+            throw BackendError.invalidURL
+        }
+
+        let (data, response) = try await URLSession.shared.data(from: url)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BackendError.invalidResponse
+        }
+
+        if httpResponse.statusCode != 200 {
+            if let errorDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let detail = errorDict["detail"] as? String {
+                throw BackendError.serverError(detail)
+            }
+            throw BackendError.httpError(httpResponse.statusCode)
+        }
+
+        let result = try JSONDecoder().decode(ProjectListResponse.self, from: data)
+        return result.projects
+    }
+
+    /// Get files in a specific project
+    /// - Parameter projectId: The project identifier
+    /// - Returns: List of files in the project
+    func getProjectFiles(projectId: String) async throws -> [ProjectFile] {
+        guard let url = URL(string: "\(baseURL)/projects/\(projectId)/files") else {
+            throw BackendError.invalidURL
+        }
+
+        let (data, response) = try await URLSession.shared.data(from: url)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw BackendError.invalidResponse
+        }
+
+        if httpResponse.statusCode != 200 {
+            if let errorDict = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let detail = errorDict["detail"] as? String {
+                throw BackendError.serverError(detail)
+            }
+            throw BackendError.httpError(httpResponse.statusCode)
+        }
+
+        let result = try JSONDecoder().decode(ProjectFilesResponse.self, from: data)
+        return result.files
     }
 
     // MARK: - Health Check

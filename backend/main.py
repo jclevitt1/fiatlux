@@ -220,6 +220,96 @@ class UploadResponse(BaseModel):
     size: int
 
 
+# =============================================================================
+# Project Browser
+# =============================================================================
+
+class ProjectInfo(BaseModel):
+    project_id: str  # Folder name under projects/
+    name: str  # Display name
+    file_count: int
+    last_modified: str | None = None
+
+
+class ProjectListResponse(BaseModel):
+    projects: list[ProjectInfo]
+
+
+@app.get("/projects", response_model=ProjectListResponse)
+async def list_projects(search: str | None = None):
+    """
+    List all available projects from storage.
+
+    Projects are discovered by listing folders under projects/.
+    Optional search parameter filters by project name.
+    """
+    try:
+        files = await storage.list_files("projects")
+
+        # Group files by top-level project folder
+        project_files: dict[str, list] = {}
+        for f in files:
+            # Extract project folder from path (projects/project_name/...)
+            parts = f.path.split("/")
+            if len(parts) >= 2:
+                project_id = parts[1]  # projects/{project_id}/...
+                if project_id not in project_files:
+                    project_files[project_id] = []
+                project_files[project_id].append(f)
+
+        # Build project info list
+        projects = []
+        for project_id, files in project_files.items():
+            # Apply search filter if provided
+            if search and search.lower() not in project_id.lower():
+                continue
+
+            projects.append(ProjectInfo(
+                project_id=project_id,
+                name=project_id.replace("_", " ").replace("-", " "),
+                file_count=len(files),
+                last_modified=None  # Could extract from file metadata if needed
+            ))
+
+        # Sort alphabetically
+        projects.sort(key=lambda p: p.name.lower())
+
+        return ProjectListResponse(projects=projects)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list projects: {e}")
+
+
+class ProjectFilesResponse(BaseModel):
+    project_id: str
+    files: list[dict]
+
+
+@app.get("/projects/{project_id}/files", response_model=ProjectFilesResponse)
+async def get_project_files(project_id: str):
+    """
+    List files in a specific project.
+    """
+    try:
+        files = await storage.list_files(f"projects/{project_id}")
+
+        return ProjectFilesResponse(
+            project_id=project_id,
+            files=[
+                {
+                    "id": f.id,
+                    "name": f.name,
+                    "path": f.path,
+                    "mime_type": f.mime_type,
+                    "size": f.size
+                }
+                for f in files
+            ]
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list project files: {e}")
+
+
 @app.post("/upload", response_model=UploadResponse)
 async def upload_file(request: UploadRequest):
     """
