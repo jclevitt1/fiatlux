@@ -12,6 +12,7 @@ enum DrawingTool: Equatable {
     case eraser
     case shape(ShapeType)
     case shapePen  // Freehand with shape recognition
+    case text
 
     var isShapeTool: Bool {
         switch self {

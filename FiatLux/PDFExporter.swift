@@ -234,6 +234,38 @@ struct PDFExporter {
                 }
             }
 
+            // Render text boxes on top of drawing
+            for textBox in pageData.textBoxes {
+                let pixelFrame = CGRect(
+                    x: textBox.position.x * pageWidth,
+                    y: (1 - textBox.position.y - textBox.size.height) * pageHeight, // Flip Y for PDF
+                    width: textBox.size.width * pageWidth,
+                    height: textBox.size.height * pageHeight
+                )
+
+                // Draw background if set
+                if let bgColor = textBox.backgroundColor, bgColor != .clear {
+                    pdfContext.setFillColor(nsColorFromTextBoxColor(bgColor).withAlphaComponent(0.3).cgColor)
+                    pdfContext.fill(pixelFrame)
+                }
+
+                // Draw text
+                let scaledFontSize = textBox.fontSize * (pageWidth / 800.0)
+                let font = NSFont.systemFont(ofSize: scaledFontSize, weight: nsWeightFromTextBoxWeight(textBox.fontWeight))
+
+                let paragraphStyle = NSMutableParagraphStyle()
+                paragraphStyle.alignment = nsAlignmentFromTextAlignment(textBox.alignment)
+
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: font,
+                    .foregroundColor: nsColorFromTextBoxColor(textBox.textColor),
+                    .paragraphStyle: paragraphStyle
+                ]
+
+                let attributedString = NSAttributedString(string: textBox.text, attributes: attributes)
+                attributedString.draw(in: pixelFrame)
+            }
+
             pdfContext.endPage()
             print("DEBUG PDFExporter: Page \(pageIndex) ended")
         }
@@ -248,6 +280,41 @@ struct PDFExporter {
     struct DrawingLine: Codable {
         var points: [CGPoint]
     }
+
+    // Helper to convert TextBox.TextBoxColor to NSColor
+    private static func nsColorFromTextBoxColor(_ color: TextBox.TextBoxColor) -> NSColor {
+        switch color {
+        case .black: return .black
+        case .darkGray: return NSColor(white: 0.3, alpha: 1)
+        case .gray: return .gray
+        case .blue: return .blue
+        case .red: return .red
+        case .green: return .green
+        case .orange: return .orange
+        case .purple: return .purple
+        case .white: return .white
+        case .clear: return .clear
+        }
+    }
+
+    // Helper to convert TextBox.FontWeight to NSFont.Weight
+    private static func nsWeightFromTextBoxWeight(_ weight: TextBox.FontWeight) -> NSFont.Weight {
+        switch weight {
+        case .regular: return .regular
+        case .medium: return .medium
+        case .semibold: return .semibold
+        case .bold: return .bold
+        }
+    }
+
+    // Helper to convert TextBox.TextAlignment to NSTextAlignment
+    private static func nsAlignmentFromTextAlignment(_ alignment: TextBox.TextAlignment) -> NSTextAlignment {
+        switch alignment {
+        case .leading: return .left
+        case .center: return .center
+        case .trailing: return .right
+        }
+    }
 }
 
 #else
@@ -258,7 +325,13 @@ struct PDFExporter {
     static let pageWidth: CGFloat = 612
     static let pageHeight: CGFloat = 792
 
+    // Legacy support for [Data] (converts to [PageData] with portrait orientation)
     static func export(pages: [Data], title: String) -> URL? {
+        let pageDataArray = pages.map { PageData(drawingData: $0, orientation: .portrait) }
+        return export(pages: pageDataArray, title: title)
+    }
+
+    static func export(pages: [PageData], title: String) -> URL? {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(title).pdf")
 
@@ -270,10 +343,43 @@ struct PDFExporter {
                     context.beginPage()
 
                     // Try to render as PKDrawing
-                    if let drawing = try? PKDrawing(data: pageData) {
+                    if let drawing = try? PKDrawing(data: pageData.drawingData) {
                         let image = drawing.image(from: drawing.bounds, scale: 1.0)
                         let rect = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
                         image.draw(in: rect)
+                    }
+
+                    // Render text boxes on top
+                    for textBox in pageData.textBoxes {
+                        let pixelFrame = CGRect(
+                            x: textBox.position.x * pageWidth,
+                            y: textBox.position.y * pageHeight,
+                            width: textBox.size.width * pageWidth,
+                            height: textBox.size.height * pageHeight
+                        )
+
+                        // Draw background if set
+                        if let bgColor = textBox.backgroundColor, bgColor != .clear {
+                            let bgUIColor = uiColorFromTextBoxColor(bgColor).withAlphaComponent(0.3)
+                            bgUIColor.setFill()
+                            UIRectFill(pixelFrame)
+                        }
+
+                        // Draw text
+                        let scaledFontSize = textBox.fontSize * (pageWidth / 800.0)
+                        let font = UIFont.systemFont(ofSize: scaledFontSize, weight: uiWeightFromTextBoxWeight(textBox.fontWeight))
+
+                        let paragraphStyle = NSMutableParagraphStyle()
+                        paragraphStyle.alignment = nsAlignmentFromTextAlignment(textBox.alignment)
+
+                        let attributes: [NSAttributedString.Key: Any] = [
+                            .font: font,
+                            .foregroundColor: uiColorFromTextBoxColor(textBox.textColor),
+                            .paragraphStyle: paragraphStyle
+                        ]
+
+                        let attributedString = NSAttributedString(string: textBox.text, attributes: attributes)
+                        attributedString.draw(in: pixelFrame)
                     }
                 }
             }
@@ -281,6 +387,41 @@ struct PDFExporter {
         } catch {
             print("PDF export error: \(error)")
             return nil
+        }
+    }
+
+    // Helper to convert TextBox.TextBoxColor to UIColor
+    private static func uiColorFromTextBoxColor(_ color: TextBox.TextBoxColor) -> UIColor {
+        switch color {
+        case .black: return .black
+        case .darkGray: return UIColor(white: 0.3, alpha: 1)
+        case .gray: return .gray
+        case .blue: return .blue
+        case .red: return .red
+        case .green: return .green
+        case .orange: return .orange
+        case .purple: return .purple
+        case .white: return .white
+        case .clear: return .clear
+        }
+    }
+
+    // Helper to convert TextBox.FontWeight to UIFont.Weight
+    private static func uiWeightFromTextBoxWeight(_ weight: TextBox.FontWeight) -> UIFont.Weight {
+        switch weight {
+        case .regular: return .regular
+        case .medium: return .medium
+        case .semibold: return .semibold
+        case .bold: return .bold
+        }
+    }
+
+    // Helper to convert TextBox.TextAlignment to NSTextAlignment
+    private static func nsAlignmentFromTextAlignment(_ alignment: TextBox.TextAlignment) -> NSTextAlignment {
+        switch alignment {
+        case .leading: return .left
+        case .center: return .center
+        case .trailing: return .right
         }
     }
 }

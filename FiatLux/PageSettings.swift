@@ -31,10 +31,12 @@ struct PageData: Codable {
     var drawingData: Data
     var orientation: PageOrientation
     var shapes: [DrawingShape]
+    var textBoxes: [TextBox]
 
-    init(drawingData: Data = Data(), orientation: PageOrientation = .portrait, shapes: [DrawingShape] = []) {
+    init(drawingData: Data = Data(), orientation: PageOrientation = .portrait, shapes: [DrawingShape] = [], textBoxes: [TextBox] = []) {
         self.drawingData = drawingData
         self.orientation = orientation
         self.shapes = shapes
+        self.textBoxes = textBoxes
     }
 }

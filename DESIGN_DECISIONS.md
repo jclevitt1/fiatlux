@@ -127,11 +127,45 @@ GSIs:
 - **Projects list in user record**: Simpler reads but write amplification and size limits.
 - **Separate jobs table per user**: Rejected - jobs are ephemeral, don't need user scoping at DB level.
 
+### [2026-01-28] Text Box Implementation - Layer Architecture
+**Context:** Implementing text boxes for iPad notes required deciding how text interacts with the drawing layer.
+**Decision:** Text boxes render as a separate overlay layer on TOP of the drawing canvas. Text tool mode disables drawing input and enables text box interaction.
+**Rationale:**
+1. Simplest implementation - no need for complex z-ordering between individual strokes and text
+2. Matches user mental model - text naturally sits "on top" of drawings
+3. Avoids drawing accidentally erasing text (different interaction modes)
+4. Easier to implement move/resize without affecting strokes
+**Alternatives Considered:**
+- Unified layer system (text as special stroke type) - rejected: over-engineered for MVP
+- Text below drawing - rejected: text would be obscured by ink
+
+### [2026-01-28] Text Box Coordinate System - Normalized Positions
+**Context:** Text boxes need to persist and render correctly across different screen sizes and orientations.
+**Decision:** Store text box position and size as normalized fractions (0-1) of page dimensions, not absolute pixels.
+**Rationale:**
+1. Resolution-independent - works on any device/screen size
+2. Exports correctly to PDF at any scale
+3. Future-proof for varying canvas sizes
+**Alternatives Considered:**
+- Absolute pixel coordinates - rejected: breaks on different devices
+- Percentage strings - rejected: unnecessary complexity vs CGFloat fractions
+
+### [2026-01-28] Text Box Font Sizing - Scale Reference
+**Context:** Font sizes need to remain visually consistent when rendering on different canvas sizes.
+**Decision:** Font size stored in points, scaled relative to a 800px reference canvas width. Formula: `scaledSize = fontSize * (canvasWidth / 800.0)`
+**Rationale:**
+1. Intuitive for users - can think in standard point sizes (12pt, 16pt, etc.)
+2. Consistent appearance regardless of window/device size
+3. PDF export maintains proportional sizing
+**Alternatives Considered:**
+- Normalized font size (0-1 of page height) - rejected: unintuitive for users
+- Fixed pixel sizes - rejected: would vary wildly across devices
+
 ---
 
 ## Pending Decisions
 
-- **Layer Architecture**: How do layers interact with text boxes? Separate systems or text as special layer type?
 - **User Auth Provider**: Clerk confirmed as preference, but need to finalize JWT validation approach in Lambda.
 - **Ruler Tool**: Should we add a separate ruler/straightedge tool or is shape pen + line shape sufficient?
 - **Shape Selection**: Need to add ability to select, move, resize shapes after drawing
+- **Text Box Selection**: Need to add ability to select, edit, and delete existing text boxes

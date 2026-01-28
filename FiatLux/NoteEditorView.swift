@@ -91,6 +91,16 @@ struct NoteEditorView: View {
                     .buttonStyle(.plain)
                     .help("Eraser")
 
+                    Button {
+                        currentTool = .text
+                    } label: {
+                        Image(systemName: "character.textbox")
+                            .font(.title2)
+                            .foregroundStyle(currentTool == .text ? .blue : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Text Box")
+
                     Divider()
                         .frame(height: 24)
 
@@ -308,14 +318,28 @@ struct NoteEditorView: View {
 
             // Multi-page notebook
             #if os(iOS)
-            CanvasView(
-                canvasView: $canvasView,
-                currentTool: $currentTool,
-                shapes: $pages[currentPageIndex].shapes
-            )
-            .onAppear {
-                if let note = note {
-                    canvasView.drawing = note.drawing
+            GeometryReader { geometry in
+                ZStack {
+                    // Drawing layer (with shapes support)
+                    CanvasView(
+                        canvasView: $canvasView,
+                        currentTool: $currentTool,
+                        shapes: $pages[currentPageIndex].shapes
+                    )
+                    .onAppear {
+                        if let note = note {
+                            canvasView.drawing = note.drawing
+                        }
+                    }
+                    .allowsHitTesting(currentTool != .text)
+
+                    // Text box overlay layer
+                    TextBoxOverlayView(
+                        textBoxes: $pages[currentPageIndex].textBoxes,
+                        currentTool: $currentTool,
+                        canvasSize: geometry.size
+                    )
+                    .allowsHitTesting(currentTool == .text)
                 }
             }
             #else
@@ -543,9 +567,21 @@ struct PageCanvasView: View {
     }
 
     var body: some View {
-        CanvasView(drawingData: $page.drawingData, currentTool: $currentTool, shapes: $page.shapes)
-            .frame(width: canvasSize.width, height: canvasSize.height)
-            .onAppear(perform: onAppear)
+        ZStack {
+            // Drawing layer with shapes support (below text boxes)
+            CanvasView(drawingData: $page.drawingData, currentTool: $currentTool, shapes: $page.shapes)
+                .allowsHitTesting(currentTool != .text)
+
+            // Text box overlay layer (on top of drawing)
+            TextBoxOverlayView(
+                textBoxes: $page.textBoxes,
+                currentTool: $currentTool,
+                canvasSize: canvasSize
+            )
+            .allowsHitTesting(currentTool == .text)
+        }
+        .frame(width: canvasSize.width, height: canvasSize.height)
+        .onAppear(perform: onAppear)
     }
 }
 #endif
