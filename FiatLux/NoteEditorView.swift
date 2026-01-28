@@ -101,6 +101,16 @@ struct NoteEditorView: View {
                     .buttonStyle(.plain)
                     .help("Text Box")
 
+                    Button {
+                        currentTool = .lasso
+                    } label: {
+                        Image(systemName: "lasso")
+                            .font(.title2)
+                            .foregroundStyle(currentTool == .lasso ? .blue : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Lasso Select")
+
                     Divider()
                         .frame(height: 24)
 
