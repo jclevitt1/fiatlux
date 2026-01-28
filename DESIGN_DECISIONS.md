@@ -81,6 +81,52 @@ This document tracks critical design decisions made during development. Agents s
 - Modal shape mode with separate gestures (rejected: context switching overhead)
 - Ruler tool for straight lines (deferred: shape pen + line tool covers use case for now)
 
+### [2026-01-28] DynamoDB User System Schema Design
+**Context:** Need to track users and their projects for multi-tenant support. Users authenticate via Clerk, projects are generated from notes and stored in S3.
+
+**Decision:** Two-table design with GSIs for secondary access patterns.
+
+**Users Table (fiatlux-users):**
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| user_id (PK) | String | Clerk user ID (sub claim from JWT) |
+| email | String | User's email address |
+| display_name | String | Optional display name |
+| created_at | String (ISO8601) | Creation timestamp |
+| updated_at | String (ISO8601) | Last update timestamp |
+
+GSI: `email-index` (email → user) for lookup by email.
+
+**Projects Table (fiatlux-projects):**
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| project_id (PK) | String | UUID |
+| user_id | String | Clerk user ID (owner) |
+| name | String | Display name |
+| s3_path | String | Path in S3 (e.g., "projects/user123/my-app/") |
+| description | String | Optional description |
+| status | String | pending/processing/ready/failed |
+| source_note_path | String | Original note that created this |
+| created_at | String (ISO8601) | Creation timestamp |
+| updated_at | String (ISO8601) | Last update timestamp |
+
+GSIs:
+- `user-index` (user_id → projects) for listing user's projects
+- `s3-path-index` (s3_path → project) for resolving project from S3 events
+
+**Rationale:**
+1. **Two tables vs single table**: Separate tables are clearer and sufficient for our access patterns. Single-table design adds complexity without benefit here - we don't need transactional operations across users and projects.
+2. **user_id from Clerk**: Using Clerk's `sub` claim directly as PK means no mapping table needed. User record created on first authenticated request.
+3. **Projects don't store file list**: Project files live in S3 at s3_path. The projects table is metadata only - no need to sync file lists.
+4. **PAY_PER_REQUEST billing**: Low initial traffic, don't want to over-provision. Can switch to provisioned if needed.
+5. **s3_path GSI**: When S3 events trigger processing, we need to find the project record. This GSI enables that lookup.
+6. **No projects list in users table**: Originally considered storing `projects: [project_id, ...]` in user record. Rejected because: (a) 400KB item limit could become problematic, (b) requires updating user record on every project change, (c) GSI query is cleaner.
+
+**Alternatives Considered:**
+- **Single table design**: PK=user_id, SK=PROJECT#{project_id}. Rejected - over-engineering for current needs, harder to reason about.
+- **Projects list in user record**: Simpler reads but write amplification and size limits.
+- **Separate jobs table per user**: Rejected - jobs are ephemeral, don't need user scoping at DB level.
+
 ---
 
 ## Pending Decisions
