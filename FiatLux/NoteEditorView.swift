@@ -39,7 +39,6 @@ struct NoteEditorView: View {
 
     #if os(iOS)
     @State private var canvasView = PKCanvasView()
-    @State private var toolPicker = PKToolPicker()
     #endif
 
     // 8.5 x 11 ratio (11/8.5 = 1.294)
@@ -67,8 +66,9 @@ struct NoteEditorView: View {
 
                 Spacer()
 
-                // Tool buttons
+                // Tool buttons (macOS only - iOS uses PKToolPicker)
                 HStack(spacing: 16) {
+                    #if os(macOS)
                     Button {
                         currentTool = .pencil
                     } label: {
@@ -89,6 +89,7 @@ struct NoteEditorView: View {
 
                     Divider()
                         .frame(height: 24)
+                    #endif
 
                     Button {
                         exportToPDF()
@@ -233,7 +234,7 @@ struct NoteEditorView: View {
 
             // Multi-page notebook
             #if os(iOS)
-            CanvasView(canvasView: $canvasView, toolPicker: $toolPicker)
+            CanvasView(canvasView: $canvasView)
                 .onAppear {
                     if let note = note {
                         canvasView.drawing = note.drawing

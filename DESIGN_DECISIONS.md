@@ -39,6 +39,22 @@ This document tracks critical design decisions made during development. Agents s
 **Rationale:** Original vision is iPad note-taking app. PencilKit on iOS provides superior drawing experience vs custom canvas on macOS.
 **Alternatives Considered:** macOS-first, but that deviates from core use case.
 
+### [2026-01-28] iOS Pen Colors/Sizes - Use PKToolPicker
+**Context:** Need to add pen color and size customization to the drawing canvas on iOS.
+**Decision:** Use Apple's built-in `PKToolPicker` rather than building a custom color/size picker UI. The tool picker is accessed via `PKToolPicker.shared(for: window)` and tool selection is persisted to UserDefaults.
+**Rationale:**
+1. PKToolPicker provides comprehensive tool selection: multiple pen types (pen, marker, pencil, crayon), full color picker with presets and custom colors, size slider, eraser options, and ruler
+2. Native iOS look and feel that users expect
+3. Automatic Apple Pencil integration (pressure sensitivity, tilt)
+4. Less code to maintain vs custom UI
+**Alternatives Considered:**
+- Custom color/size picker overlay: More work, less native feel, would need to re-implement features PKToolPicker provides for free
+- Hybrid approach with custom buttons: Would conflict with PKToolPicker's own tool selection
+**Implementation Notes:**
+- Tool selection persisted via `ToolPersistence` class using UserDefaults
+- Color stored as hex string for serialization
+- macOS still uses custom toolbar since PKToolPicker is iOS-only
+
 ---
 
 ## Pending Decisions
