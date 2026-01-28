@@ -14,3 +14,9 @@ backend/.env
 backend/credentials.json
 backend/token.pickle
 backend/.env
+
+# Gas Town (added by gt)
+.runtime/
+.claude/
+.beads/
+.logs/
