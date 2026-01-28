@@ -379,7 +379,12 @@ struct NoteEditorView: View {
 
     private func save() {
         #if os(iOS)
-        let savedPages = [canvasView.drawing.dataRepresentation()]
+        // Update current page's active layer with canvas drawing
+        var updatedPages = pages
+        if !updatedPages.isEmpty {
+            updatedPages[currentPageIndex].layers[updatedPages[currentPageIndex].activeLayerIndex].drawingData = canvasView.drawing.dataRepresentation()
+        }
+        let savedPages = updatedPages
         #else
         let savedPages = pages
         #endif
