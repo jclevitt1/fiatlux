@@ -314,7 +314,7 @@ struct NoteEditorView: View {
 
             // Multi-page notebook
             #if os(iOS)
-            CanvasView(canvasView: $canvasView, toolPicker: $toolPicker)
+            CanvasView(canvasView: $canvasView, toolPicker: $toolPicker, currentTool: $currentTool)
                 .onAppear {
                     if let note = note {
                         canvasView.drawing = note.drawing

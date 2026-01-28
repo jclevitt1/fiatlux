@@ -37,6 +37,7 @@ struct LayeredCanvasView: View {
     @Binding var page: PageData
     @Binding var canvasView: PKCanvasView
     @Binding var toolPicker: PKToolPicker
+    @Binding var currentTool: DrawingTool
     let canvasSize: CGSize
 
     var body: some View {
@@ -48,7 +49,8 @@ struct LayeredCanvasView: View {
                         // Active layer - live PKCanvasView
                         CanvasViewRepresentable(
                             canvasView: $canvasView,
-                            toolPicker: $toolPicker
+                            toolPicker: $toolPicker,
+                            currentTool: $currentTool
                         )
                         .opacity(layer.opacity)
                     } else {
@@ -84,6 +86,7 @@ struct LayerImageView: View {
 struct CanvasViewRepresentable: UIViewRepresentable {
     @Binding var canvasView: PKCanvasView
     @Binding var toolPicker: PKToolPicker
+    @Binding var currentTool: DrawingTool
 
     func makeUIView(context: Context) -> PKCanvasView {
         canvasView.backgroundColor = .clear  // Transparent for layering
@@ -98,13 +101,30 @@ struct CanvasViewRepresentable: UIViewRepresentable {
         return canvasView
     }
 
-    func updateUIView(_ uiView: PKCanvasView, context: Context) {}
+    func updateUIView(_ uiView: PKCanvasView, context: Context) {
+        uiView.tool = pkTool(for: currentTool)
+    }
+
+    private func pkTool(for tool: DrawingTool) -> PKTool {
+        switch tool {
+        case .pencil:
+            return PKInkingTool(.pen, color: .black, width: 5)
+        case .eraser:
+            return PKEraserTool(.bitmap)
+        case .lasso:
+            return PKLassoTool()
+        case .text, .shape, .shapePen:
+            // These are handled by overlay views, use pen as fallback
+            return PKInkingTool(.pen, color: .black, width: 5)
+        }
+    }
 }
 
 /// Legacy single-layer canvas for backward compatibility
 struct CanvasView: UIViewRepresentable {
     @Binding var canvasView: PKCanvasView
     @Binding var toolPicker: PKToolPicker
+    @Binding var currentTool: DrawingTool
 
     func makeUIView(context: Context) -> PKCanvasView {
         canvasView.backgroundColor = .white
@@ -118,7 +138,23 @@ struct CanvasView: UIViewRepresentable {
         return canvasView
     }
 
-    func updateUIView(_ uiView: PKCanvasView, context: Context) {}
+    func updateUIView(_ uiView: PKCanvasView, context: Context) {
+        uiView.tool = pkTool(for: currentTool)
+    }
+
+    private func pkTool(for tool: DrawingTool) -> PKTool {
+        switch tool {
+        case .pencil:
+            return PKInkingTool(.pen, color: .black, width: 5)
+        case .eraser:
+            return PKEraserTool(.bitmap)
+        case .lasso:
+            return PKLassoTool()
+        case .text, .shape, .shapePen:
+            // These are handled by overlay views, use pen as fallback
+            return PKInkingTool(.pen, color: .black, width: 5)
+        }
+    }
 }
 
 #else

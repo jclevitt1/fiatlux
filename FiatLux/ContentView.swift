@@ -241,7 +241,8 @@ struct NoteRowView: View {
         HStack(spacing: 12) {
             // Drawing thumbnail
             #if os(iOS)
-            if let image = note.drawing.image(from: note.drawing.bounds, scale: 1.0) {
+            if !note.drawing.bounds.isEmpty {
+                let image = note.drawing.image(from: note.drawing.bounds, scale: 1.0)
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
