@@ -7,9 +7,20 @@
 
 import SwiftUI
 
-enum DrawingTool {
+enum DrawingTool: Equatable {
     case pencil
     case eraser
+    case shape(ShapeType)
+    case shapePen  // Freehand with shape recognition
+    case text
+    case lasso
+
+    var isShapeTool: Bool {
+        switch self {
+        case .shape, .shapePen: return true
+        default: return false
+        }
+    }
 }
 
 #if os(iOS)
