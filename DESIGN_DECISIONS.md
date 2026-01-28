@@ -195,11 +195,76 @@ GSIs:
 - Consider adding "object mode" vs "drawing mode" toggle in future
 - May need unified selection when implementing layers (select all content on a layer)
 **Alternatives Considered:** Rasterizing shapes into PKDrawing so PKLassoTool can select them, but this loses shape editability.
+### [2026-01-28] Layer Architecture for iPad
+**Context:** Need to implement multi-layer drawing support for iPad. PencilKit (iOS) is inherently single-layer - each PKCanvasView can only hold one PKDrawing.
+**Decision:** Hybrid rendering approach:
+- Active layer uses live PKCanvasView for real-time drawing
+- Non-active layers render as static UIImage overlays
+- Layers composite via ZStack with proper z-ordering
+- On layer switch: save current PKDrawing to layer data, load new layer into PKCanvasView
+
+**Rationale:**
+1. PencilKit provides the best Apple Pencil experience (pressure, tilt, palm rejection)
+2. Static image rendering for non-active layers is performant
+3. User can only draw on one layer at a time anyway
+4. Maintains full editability when switching back to a layer
+
+**Alternatives Considered:**
+- Multiple PKCanvasView instances (complex touch handling, memory intensive)
+- Pure image-based layers (loses stroke editability)
+- Custom drawing without PencilKit (inferior pencil experience)
+
+**Implementation Details:**
+- `DrawingLayer` struct: id, name, isVisible, opacity, zIndex, drawingData
+- `PageData.layers: [DrawingLayer]` with activeLayerIndex
+- `LayeredCanvasView` handles rendering and layer compositing
+- `LayersPanelView` provides UI for visibility, reordering, add/delete
+- PDF export composites all visible layers respecting opacity
+
+### [2026-01-28] Layer Data Model Design
+**Context:** How to structure layer data for persistence and cross-platform compatibility.
+**Decision:** Each layer stores raw drawing data (PKDrawing bytes on iOS, JSON DrawingLine array on macOS) with metadata.
+
+**Data Structure:**
+```swift
+struct DrawingLayer: Codable, Identifiable {
+    var id: UUID
+    var name: String
+    var isVisible: Bool
+    var opacity: CGFloat
+    var zIndex: Int
+    var drawingData: Data
+}
+```
+
+**Rationale:**
+1. Platform-specific drawing formats are already different (PencilKit vs custom)
+2. Metadata (visibility, opacity, z-index) is universal
+3. Auto-migration from old single-layer format via custom Codable init
+
+**Alternatives Considered:**
+- Unified drawing format (would require custom renderer, lose PencilKit benefits)
+- Separate layer files (complex file management)
+
+### [2026-01-28] Layers as Drawing-Only (Not Text/Shapes)
+**Context:** How do layers interact with future text boxes and shapes?
+**Decision:** Layers are drawing-only. Text boxes and shapes will be separate overlay systems on top of layers.
+
+**Rationale:**
+1. Text boxes have different interaction model (tap to edit, resize handles)
+2. Shapes may need special manipulation (rotation, corner dragging)
+3. Keeping systems separate simplifies implementation
+4. Can add "flatten to layer" feature later if needed
+
+**Alternatives Considered:**
+- Text as special layer type (complex, mixing paradigms)
+- Everything on layers (loses specialized UI for each type)
 
 ---
 
 ## Pending Decisions
 
+- **Shape Recognition**: Real-time recognition vs explicit "convert to shape" action?
 - **User Auth Provider**: Clerk confirmed as preference, but need to finalize JWT validation approach in Lambda.
 - **Ruler Tool**: Should we add a separate ruler/straightedge tool or is shape pen + line shape sufficient?
 - **Shape Selection**: Need to add ability to select, move, resize shapes after drawing
