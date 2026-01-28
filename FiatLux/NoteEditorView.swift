@@ -36,6 +36,9 @@ struct NoteEditorView: View {
     @State private var isBackingUp: Bool = false
     @State private var backupMessage: String? = nil
     @State private var showingBackupAlert: Bool = false
+    @State private var showingLayersPanel: Bool = false
+    @State private var editingLayerName: UUID? = nil
+    @State private var editingLayerText: String = ""
 
     #if os(iOS)
     @State private var canvasView = PKCanvasView()
@@ -155,6 +158,16 @@ struct NoteEditorView: View {
                         .padding()
                         .frame(width: 200)
                     }
+
+                    Button {
+                        showingLayersPanel.toggle()
+                    } label: {
+                        Image(systemName: "square.3.layers.3d")
+                            .font(.title2)
+                            .foregroundStyle(showingLayersPanel ? .blue : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Layers")
                 }
 
                 Spacer()
@@ -231,50 +244,93 @@ struct NoteEditorView: View {
 
             Divider()
 
-            // Multi-page notebook
+            // Multi-page notebook with layers
             #if os(iOS)
-            CanvasView(canvasView: $canvasView, toolPicker: $toolPicker)
-                .onAppear {
-                    if let note = note {
-                        canvasView.drawing = note.drawing
+            HStack(spacing: 0) {
+                GeometryReader { geometry in
+                    let canvasSize = calculateCanvasSize(
+                        availableWidth: geometry.size.width - (showingLayersPanel ? 220 : 0),
+                        availableHeight: geometry.size.height,
+                        orientation: pages[currentPageIndex].orientation
+                    )
+
+                    LayeredCanvasView(
+                        page: $pages[currentPageIndex],
+                        canvasView: $canvasView,
+                        toolPicker: $toolPicker,
+                        canvasSize: canvasSize
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .onAppear {
+                        loadActiveLayerToCanvas()
+                    }
+                    .onChange(of: pages[currentPageIndex].activeLayerIndex) { _, _ in
+                        saveCurrentLayerAndLoadNew()
                     }
                 }
-            #else
-            GeometryReader { geometry in
-                let availableWidth = geometry.size.width - 40  // padding
-                let availableHeight = geometry.size.height - 40
 
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(spacing: 20) {
-                            ForEach(pages.indices, id: \.self) { index in
-                                PageCanvasView(
-                                    page: $pages[index],
-                                    currentTool: $currentTool,
-                                    availableWidth: availableWidth,
-                                    availableHeight: availableHeight,
-                                    onAppear: { currentPageIndex = index }
-                                )
-                                .id(index)
-                            }
-
-                            // Add page button
-                            Button {
-                                pages.append(PageData())
-                            } label: {
-                                HStack {
-                                    Image(systemName: "plus.circle")
-                                    Text("Add Page")
-                                }
-                                .foregroundStyle(.secondary)
-                                .padding()
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding()
-                    }
+                if showingLayersPanel {
+                    LayersPanelView(
+                        page: $pages[currentPageIndex],
+                        editingLayerName: $editingLayerName,
+                        editingLayerText: $editingLayerText,
+                        onLayerSwitch: { saveCurrentLayerAndLoadNew() }
+                    )
+                    .frame(width: 220)
+                    .transition(.move(edge: .trailing))
                 }
             }
+            .animation(.easeInOut(duration: 0.2), value: showingLayersPanel)
+            #else
+            HStack(spacing: 0) {
+                GeometryReader { geometry in
+                    let availableWidth = geometry.size.width - (showingLayersPanel ? 260 : 40)
+                    let availableHeight = geometry.size.height - 40
+
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            LazyVStack(spacing: 20) {
+                                ForEach(pages.indices, id: \.self) { index in
+                                    LayeredPageCanvasView(
+                                        page: $pages[index],
+                                        currentTool: $currentTool,
+                                        availableWidth: availableWidth,
+                                        availableHeight: availableHeight,
+                                        onAppear: { currentPageIndex = index }
+                                    )
+                                    .id(index)
+                                }
+
+                                // Add page button
+                                Button {
+                                    pages.append(PageData())
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "plus.circle")
+                                        Text("Add Page")
+                                    }
+                                    .foregroundStyle(.secondary)
+                                    .padding()
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .padding()
+                        }
+                    }
+                }
+
+                if showingLayersPanel {
+                    LayersPanelView(
+                        page: $pages[currentPageIndex],
+                        editingLayerName: $editingLayerName,
+                        editingLayerText: $editingLayerText,
+                        onLayerSwitch: {}
+                    )
+                    .frame(width: 220)
+                    .transition(.move(edge: .trailing))
+                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: showingLayersPanel)
             #endif
         }
         .navigationTitle(title.isEmpty ? "New Note" : title)
@@ -298,7 +354,14 @@ struct NoteEditorView: View {
 
     private func save() {
         #if os(iOS)
-        let savedPages = [canvasView.drawing.dataRepresentation()]
+        // Save current canvas drawing to active layer before persisting
+        var savedPages = pages
+        if currentPageIndex < savedPages.count {
+            let activeIndex = savedPages[currentPageIndex].activeLayerIndex
+            if activeIndex < savedPages[currentPageIndex].layers.count {
+                savedPages[currentPageIndex].layers[activeIndex].drawingData = canvasView.drawing.dataRepresentation()
+            }
+        }
         #else
         let savedPages = pages
         #endif
@@ -339,7 +402,14 @@ struct NoteEditorView: View {
         let exportTitle = title.isEmpty ? "Untitled" : title
 
         #if os(iOS)
-        let exportPages = [canvasView.drawing.dataRepresentation()]
+        // Save current canvas drawing to active layer before export
+        var exportPages = pages
+        if currentPageIndex < exportPages.count {
+            let activeIndex = exportPages[currentPageIndex].activeLayerIndex
+            if activeIndex < exportPages[currentPageIndex].layers.count {
+                exportPages[currentPageIndex].layers[activeIndex].drawingData = canvasView.drawing.dataRepresentation()
+            }
+        }
         #else
         let exportPages = pages
         #endif
@@ -380,7 +450,14 @@ struct NoteEditorView: View {
         let backupTitle = title.isEmpty ? "Untitled" : title
 
         #if os(iOS)
-        let backupPages = [canvasView.drawing.dataRepresentation()]
+        // Save current canvas drawing to active layer before backup
+        var backupPages = pages
+        if currentPageIndex < backupPages.count {
+            let activeIndex = backupPages[currentPageIndex].activeLayerIndex
+            if activeIndex < backupPages[currentPageIndex].layers.count {
+                backupPages[currentPageIndex].layers[activeIndex].drawingData = canvasView.drawing.dataRepresentation()
+            }
+        }
         #else
         let backupPages = pages
         #endif
@@ -431,10 +508,209 @@ struct NoteEditorView: View {
             }
         }
     }
+
+    #if os(iOS)
+    private func calculateCanvasSize(availableWidth: CGFloat, availableHeight: CGFloat, orientation: PageOrientation) -> CGSize {
+        let aspectRatio = orientation.aspectRatio
+
+        if orientation == .portrait {
+            let maxHeight = availableHeight * 0.95
+            let widthFromHeight = maxHeight / aspectRatio
+
+            if widthFromHeight <= availableWidth {
+                return CGSize(width: widthFromHeight, height: maxHeight)
+            } else {
+                return CGSize(width: availableWidth, height: availableWidth * aspectRatio)
+            }
+        } else {
+            return CGSize(width: availableWidth, height: availableWidth * aspectRatio)
+        }
+    }
+
+    private func loadActiveLayerToCanvas() {
+        guard currentPageIndex < pages.count else { return }
+        let page = pages[currentPageIndex]
+        guard let activeLayer = page.activeLayer else { return }
+
+        if let drawing = try? PKDrawing(data: activeLayer.drawingData) {
+            canvasView.drawing = drawing
+        } else {
+            canvasView.drawing = PKDrawing()
+        }
+    }
+
+    private func saveCurrentLayerAndLoadNew() {
+        guard currentPageIndex < pages.count else { return }
+
+        // Save current drawing to active layer
+        let activeIndex = pages[currentPageIndex].activeLayerIndex
+        if activeIndex < pages[currentPageIndex].layers.count {
+            pages[currentPageIndex].layers[activeIndex].drawingData = canvasView.drawing.dataRepresentation()
+        }
+
+        // Load new active layer
+        loadActiveLayerToCanvas()
+    }
+    #endif
+}
+
+/// Layers panel sidebar for managing drawing layers
+struct LayersPanelView: View {
+    @Binding var page: PageData
+    @Binding var editingLayerName: UUID?
+    @Binding var editingLayerText: String
+    var onLayerSwitch: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Text("Layers")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    page.addLayer()
+                    onLayerSwitch()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .medium))
+                }
+                .buttonStyle(.plain)
+                .help("Add Layer")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+
+            Divider()
+
+            // Layer list (reverse order so top layer shows first)
+            ScrollView {
+                LazyVStack(spacing: 2) {
+                    ForEach(Array(page.layers.enumerated().reversed()), id: \.element.id) { index, layer in
+                        LayerRowView(
+                            layer: layer,
+                            isActive: index == page.activeLayerIndex,
+                            isEditing: editingLayerName == layer.id,
+                            editingText: $editingLayerText,
+                            onSelect: {
+                                if index != page.activeLayerIndex {
+                                    page.activeLayerIndex = index
+                                    onLayerSwitch()
+                                }
+                            },
+                            onToggleVisibility: {
+                                page.layers[index].isVisible.toggle()
+                            },
+                            onStartRename: {
+                                editingLayerName = layer.id
+                                editingLayerText = layer.name
+                            },
+                            onFinishRename: {
+                                if !editingLayerText.isEmpty {
+                                    page.layers[index].name = editingLayerText
+                                }
+                                editingLayerName = nil
+                            },
+                            onDelete: {
+                                page.deleteLayer(at: index)
+                            },
+                            canDelete: page.layers.count > 1
+                        )
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+
+            Divider()
+
+            // Opacity slider for active layer
+            if let activeIndex = page.layers.indices.contains(page.activeLayerIndex) ? page.activeLayerIndex : nil {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Opacity: \(Int(page.layers[activeIndex].opacity * 100))%")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Slider(value: $page.layers[activeIndex].opacity, in: 0...1)
+                        .controlSize(.small)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+        }
+        .background(Color(white: 0.95))
+    }
+}
+
+/// Individual layer row in the layers panel
+struct LayerRowView: View {
+    let layer: DrawingLayer
+    let isActive: Bool
+    let isEditing: Bool
+    @Binding var editingText: String
+    let onSelect: () -> Void
+    let onToggleVisibility: () -> Void
+    let onStartRename: () -> Void
+    let onFinishRename: () -> Void
+    let onDelete: () -> Void
+    let canDelete: Bool
+
+    var body: some View {
+        HStack(spacing: 8) {
+            // Visibility toggle
+            Button {
+                onToggleVisibility()
+            } label: {
+                Image(systemName: layer.isVisible ? "eye" : "eye.slash")
+                    .font(.system(size: 12))
+                    .foregroundStyle(layer.isVisible ? .primary : .secondary)
+                    .frame(width: 20)
+            }
+            .buttonStyle(.plain)
+
+            // Layer name or edit field
+            if isEditing {
+                TextField("Layer name", text: $editingText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12))
+                    .onSubmit {
+                        onFinishRename()
+                    }
+            } else {
+                Text(layer.name)
+                    .font(.system(size: 12))
+                    .lineLimit(1)
+                    .onTapGesture(count: 2) {
+                        onStartRename()
+                    }
+            }
+
+            Spacer()
+
+            // Delete button
+            if canDelete {
+                Button {
+                    onDelete()
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.red.opacity(0.7))
+                }
+                .buttonStyle(.plain)
+                .opacity(isActive ? 1 : 0)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(isActive ? Color.blue.opacity(0.15) : Color.clear)
+        .cornerRadius(4)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onSelect()
+        }
+    }
 }
 
 #if os(macOS)
-struct PageCanvasView: View {
+struct LayeredPageCanvasView: View {
     @Binding var page: PageData
     @Binding var currentTool: DrawingTool
     let availableWidth: CGFloat
@@ -464,8 +740,7 @@ struct PageCanvasView: View {
     }
 
     var body: some View {
-        CanvasView(drawingData: $page.drawingData, currentTool: $currentTool)
-            .frame(width: canvasSize.width, height: canvasSize.height)
+        LayeredCanvasView(page: $page, currentTool: $currentTool, canvasSize: canvasSize)
             .onAppear(perform: onAppear)
     }
 }
