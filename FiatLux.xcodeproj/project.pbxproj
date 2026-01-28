@@ -24,6 +24,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		2E75211E751D47D3A846CC38 /* ShapeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShapeModels.swift; sourceTree = "<group>"; };
+		67266E3E7671434FA71A2F98 /* TextBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextBox.swift; sourceTree = "<group>"; };
+		63F620B84D2445C1B9E0B088 /* TextBoxOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextBoxOverlayView.swift; sourceTree = "<group>"; };
+		D8B988BFDE884324B36E00E4 /* ProjectBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectBrowserView.swift; sourceTree = "<group>"; };
 		0C182B492F1E361800BC5B40 /* FiatLux.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FiatLux.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0C182B5A2F1E361900BC5B40 /* FiatLuxTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FiatLuxTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0C182B642F1E361900BC5B40 /* FiatLuxUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FiatLuxUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
