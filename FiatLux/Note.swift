@@ -49,6 +49,10 @@ struct Note: Identifiable, Codable, Hashable {
     var createdAt: Date
     var updatedAt: Date
 
+    // For Existing Project mode - the project to modify
+    var selectedProjectId: String?
+    var selectedProjectName: String?
+
     // Legacy support for old Data format
     var drawingData: Data {
         get { pages.first?.drawingData ?? Data() }
@@ -61,13 +65,15 @@ struct Note: Identifiable, Codable, Hashable {
         }
     }
 
-    init(id: UUID = UUID(), title: String = "", pages: [PageData] = [PageData()], mode: NoteMode = .notes, createdAt: Date = Date(), updatedAt: Date = Date()) {
+    init(id: UUID = UUID(), title: String = "", pages: [PageData] = [PageData()], mode: NoteMode = .notes, createdAt: Date = Date(), updatedAt: Date = Date(), selectedProjectId: String? = nil, selectedProjectName: String? = nil) {
         self.id = id
         self.title = title
         self.pages = pages.isEmpty ? [PageData()] : pages
         self.mode = mode
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.selectedProjectId = selectedProjectId
+        self.selectedProjectName = selectedProjectName
     }
 
     #if os(iOS)

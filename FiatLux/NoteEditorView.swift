@@ -36,6 +36,9 @@ struct NoteEditorView: View {
     @State private var isBackingUp: Bool = false
     @State private var backupMessage: String? = nil
     @State private var showingBackupAlert: Bool = false
+    @State private var showingProjectBrowser: Bool = false
+    @State private var selectedProjectId: String? = nil
+    @State private var selectedProjectName: String? = nil
 
     #if os(iOS)
     @State private var canvasView = PKCanvasView()
@@ -53,6 +56,8 @@ struct NoteEditorView: View {
         _pages = State(initialValue: note?.pages ?? [PageData()])
         _noteId = State(initialValue: note?.id ?? UUID())
         _currentMode = State(initialValue: note?.mode ?? .notes)
+        _selectedProjectId = State(initialValue: note?.selectedProjectId)
+        _selectedProjectName = State(initialValue: note?.selectedProjectName)
     }
 
     var body: some View {
@@ -226,6 +231,38 @@ struct NoteEditorView: View {
                     .frame(width: 240)
                     .padding(.vertical, 8)
                 }
+
+                // Project selector (only shown for Existing Project mode)
+                if currentMode == .existingProject {
+                    Spacer()
+                        .frame(width: 16)
+
+                    Button {
+                        showingProjectBrowser = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: selectedProjectId != nil ? "folder.fill" : "folder.badge.plus")
+                                .font(.system(size: 14))
+                            Text(selectedProjectName ?? "Select Project")
+                                .font(.caption)
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(selectedProjectId != nil ? Color.orange.opacity(0.2) : Color.secondary.opacity(0.1))
+                        )
+                        .foregroundStyle(selectedProjectId != nil ? .orange : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .popover(isPresented: $showingProjectBrowser) {
+                        ProjectBrowserView { project in
+                            selectedProjectId = project.project_id
+                            selectedProjectName = project.name
+                        }
+                    }
+                }
             }
             .padding()
 
@@ -309,7 +346,9 @@ struct NoteEditorView: View {
             pages: savedPages,
             mode: currentMode,
             createdAt: note?.createdAt ?? Date(),
-            updatedAt: Date()
+            updatedAt: Date(),
+            selectedProjectId: currentMode == .existingProject ? selectedProjectId : nil,
+            selectedProjectName: currentMode == .existingProject ? selectedProjectName : nil
         )
 
         if note != nil {
@@ -377,6 +416,13 @@ struct NoteEditorView: View {
     }
 
     private func backupToGoogleDrive() {
+        // For Existing Project mode, require a project to be selected
+        if currentMode == .existingProject && selectedProjectId == nil {
+            backupMessage = "Please select a project first.\nUse the 'Select Project' button in the toolbar."
+            showingBackupAlert = true
+            return
+        }
+
         let backupTitle = title.isEmpty ? "Untitled" : title
 
         #if os(iOS)
@@ -411,12 +457,18 @@ struct NoteEditorView: View {
                 let response = try await BackendService.shared.uploadPDF(data: pdfData, path: path)
 
                 // Auto-trigger processing (if backend is in webhook mode)
-                let triggerResult = await BackendService.shared.trigger(filePath: response.path)
+                // Pass project_id if we're in existing project mode
+                let projectId = currentMode == .existingProject ? selectedProjectId : nil
+                let triggerResult = await BackendService.shared.trigger(filePath: response.path, projectId: projectId)
 
                 await MainActor.run {
                     isBackingUp = false
                     if let trigger = triggerResult, trigger.triggered {
-                        backupMessage = "Uploaded & processing:\n\(response.path)\nJob: \(trigger.job?.job_id ?? "unknown")"
+                        var message = "Uploaded & processing:\n\(response.path)\nJob: \(trigger.job?.job_id ?? "unknown")"
+                        if let projName = selectedProjectName, currentMode == .existingProject {
+                            message += "\nTarget: \(projName)"
+                        }
+                        backupMessage = message
                     } else {
                         backupMessage = "Uploaded to:\n\(response.path)\n(trigger not available)"
                     }
