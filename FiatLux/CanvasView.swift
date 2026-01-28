@@ -10,6 +10,7 @@ import SwiftUI
 enum DrawingTool {
     case pencil
     case eraser
+    case lasso
 }
 
 #if os(iOS)
@@ -18,11 +19,16 @@ import PencilKit
 struct CanvasView: UIViewRepresentable {
     @Binding var canvasView: PKCanvasView
     @Binding var toolPicker: PKToolPicker
+    @Binding var currentTool: DrawingTool
+
+    // Store the current pen color/width to restore when switching back from lasso
+    var penColor: UIColor = .black
+    var penWidth: CGFloat = 5
 
     func makeUIView(context: Context) -> PKCanvasView {
         canvasView.backgroundColor = .white
         canvasView.drawingPolicy = .anyInput
-        canvasView.tool = PKInkingTool(.pen, color: .black, width: 5)
+        canvasView.tool = PKInkingTool(.pen, color: penColor, width: penWidth)
 
         toolPicker.setVisible(true, forFirstResponder: canvasView)
         toolPicker.addObserver(canvasView)
@@ -31,7 +37,37 @@ struct CanvasView: UIViewRepresentable {
         return canvasView
     }
 
-    func updateUIView(_ uiView: PKCanvasView, context: Context) {}
+    func updateUIView(_ uiView: PKCanvasView, context: Context) {
+        // Sync the tool based on currentTool selection
+        let newTool: PKTool
+        switch currentTool {
+        case .pencil:
+            newTool = PKInkingTool(.pen, color: penColor, width: penWidth)
+        case .eraser:
+            newTool = PKEraserTool(.bitmap)
+        case .lasso:
+            newTool = PKLassoTool()
+        }
+
+        // Only update if the tool type actually changed to avoid interrupting user actions
+        if !toolsMatch(uiView.tool, newTool) {
+            uiView.tool = newTool
+        }
+    }
+
+    // Helper to check if tools are the same type
+    private func toolsMatch(_ tool1: PKTool, _ tool2: PKTool) -> Bool {
+        switch (tool1, tool2) {
+        case (is PKLassoTool, is PKLassoTool):
+            return true
+        case (is PKEraserTool, is PKEraserTool):
+            return true
+        case (let ink1 as PKInkingTool, let ink2 as PKInkingTool):
+            return ink1.inkType == ink2.inkType
+        default:
+            return false
+        }
+    }
 }
 #else
 // macOS - simple drawing using SwiftUI Canvas

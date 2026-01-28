@@ -87,6 +87,16 @@ struct NoteEditorView: View {
                     }
                     .buttonStyle(.plain)
 
+                    Button {
+                        currentTool = .lasso
+                    } label: {
+                        Image(systemName: "lasso")
+                            .font(.title2)
+                            .foregroundStyle(currentTool == .lasso ? .blue : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Lasso Select")
+
                     Divider()
                         .frame(height: 24)
 
@@ -233,7 +243,7 @@ struct NoteEditorView: View {
 
             // Multi-page notebook
             #if os(iOS)
-            CanvasView(canvasView: $canvasView, toolPicker: $toolPicker)
+            CanvasView(canvasView: $canvasView, toolPicker: $toolPicker, currentTool: $currentTool)
                 .onAppear {
                     if let note = note {
                         canvasView.drawing = note.drawing
