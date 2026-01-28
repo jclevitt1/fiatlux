@@ -92,6 +92,50 @@ struct NoteEditorView: View {
                     }
                     .buttonStyle(.plain)
 
+                    Button {
+                        currentTool = .text
+                    } label: {
+                        Image(systemName: "textformat")
+                            .font(.title2)
+                            .foregroundStyle(currentTool == .text ? .blue : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Text Tool")
+
+                    Button {
+                        currentTool = .lasso
+                    } label: {
+                        Image(systemName: "lasso")
+                            .font(.title2)
+                            .foregroundStyle(currentTool == .lasso ? .blue : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Lasso Select")
+
+                    Menu {
+                        Button { currentTool = .shape(.rectangle) } label: {
+                            Label("Rectangle", systemImage: "rectangle")
+                        }
+                        Button { currentTool = .shape(.circle) } label: {
+                            Label("Circle", systemImage: "circle")
+                        }
+                        Button { currentTool = .shape(.line) } label: {
+                            Label("Line", systemImage: "line.diagonal")
+                        }
+                        Button { currentTool = .shape(.arrow) } label: {
+                            Label("Arrow", systemImage: "arrow.right")
+                        }
+                        Divider()
+                        Button { currentTool = .shapePen } label: {
+                            Label("Shape Pen", systemImage: "pencil.and.scribble")
+                        }
+                    } label: {
+                        Image(systemName: currentTool.isShapeTool ? "square.on.circle.fill" : "square.on.circle")
+                            .font(.title2)
+                            .foregroundStyle(currentTool.isShapeTool ? .blue : .secondary)
+                    }
+                    .help("Shapes")
+
                     Divider()
                         .frame(height: 24)
 
