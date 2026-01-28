@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# Xcode
+*.xcuserstate
+xcuserdata/
+DerivedData/
+
+# Backend
+backend/venv/
+backend/__pycache__/
+backend/token.pickle
+backend/.env
+backend/credentials.json
+backend/token.pickle
+backend/.env

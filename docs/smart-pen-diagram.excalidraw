@@ -1,0 +1,105 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "FiatLux",
+  "elements": [
+    {
+      "type": "rectangle",
+      "id": "cap-area",
+      "x": 100,
+      "y": 50,
+      "width": 300,
+      "height": 80,
+      "strokeColor": "#1e88e5",
+      "backgroundColor": "#e1f5fe",
+      "fillStyle": "solid",
+      "label": "TOP END - CAP AREA\n[USB-C] [Status LED]"
+    },
+    {
+      "type": "rectangle",
+      "id": "power",
+      "x": 100,
+      "y": 150,
+      "width": 300,
+      "height": 100,
+      "strokeColor": "#ff9800",
+      "backgroundColor": "#fff3e0",
+      "fillStyle": "solid",
+      "label": "POWER MANAGEMENT\n[PMIC] [LiPo Battery]"
+    },
+    {
+      "type": "rectangle",
+      "id": "main-pcb",
+      "x": 100,
+      "y": 270,
+      "width": 300,
+      "height": 120,
+      "strokeColor": "#43a047",
+      "backgroundColor": "#e8f5e9",
+      "fillStyle": "solid",
+      "label": "MAIN PCB\n[MCU - ESP32/nRF]\n[BLE/WiFi Antenna]\n↔ Wireless to App"
+    },
+    {
+      "type": "rectangle",
+      "id": "lower-barrel",
+      "x": 100,
+      "y": 410,
+      "width": 300,
+      "height": 100,
+      "strokeColor": "#e91e63",
+      "backgroundColor": "#fce4ec",
+      "fillStyle": "solid",
+      "label": "LOWER BARREL\n[Micro-Camera Module]\n(Angled down to view tip)"
+    },
+    {
+      "type": "rectangle",
+      "id": "tip",
+      "x": 100,
+      "y": 530,
+      "width": 300,
+      "height": 100,
+      "strokeColor": "#9c27b0",
+      "backgroundColor": "#f3e5f5",
+      "fillStyle": "solid",
+      "label": "PEN TIP ASSEMBLY\n[Pressure Sensor FSR]\n[Ink Cartridge Tip]"
+    },
+    {
+      "type": "rectangle",
+      "id": "paper",
+      "x": 150,
+      "y": 660,
+      "width": 200,
+      "height": 40,
+      "strokeColor": "#424242",
+      "backgroundColor": "#fafafa",
+      "fillStyle": "hachure",
+      "label": "PAPER SURFACE"
+    },
+    {
+      "type": "ellipse",
+      "id": "app",
+      "x": 480,
+      "y": 290,
+      "width": 120,
+      "height": 80,
+      "strokeColor": "#43a047",
+      "backgroundColor": "#c8e6c9",
+      "fillStyle": "solid",
+      "label": "Mobile\nApp"
+    },
+    {
+      "type": "arrow",
+      "id": "wireless",
+      "x": 400,
+      "y": 330,
+      "width": 80,
+      "height": 0,
+      "strokeColor": "#43a047",
+      "strokeStyle": "dashed",
+      "label": "Wireless"
+    }
+  ],
+  "appState": {
+    "viewBackgroundColor": "#ffffff"
+  }
+}

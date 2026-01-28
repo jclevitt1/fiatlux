@@ -1,0 +1,52 @@
+---
+title: Smart Pen Internal Architecture
+---
+flowchart TB
+    subgraph CAP["TOP END - CAP AREA"]
+        USB[USB-C Charging Port]
+        LED[Status LED]
+    end
+
+    subgraph POWER["POWER MANAGEMENT"]
+        PMIC[PMIC Circuit]
+        BATTERY[LiPo Battery Cell]
+    end
+
+    subgraph MCU_SECTION["MAIN PCB"]
+        MCU[MCU + Wireless Module\nESP32 / nRF]
+        RADIO[Bluetooth LE / WiFi\nAntenna]
+    end
+
+    subgraph SENSORS["LOWER BARREL"]
+        CAMERA[Micro-Camera Module\nAngled downward]
+        VIEW[View Cone →]
+    end
+
+    subgraph TIP["PEN TIP ASSEMBLY"]
+        FSR[Pressure Sensor\nFSR]
+        INK[Ink Cartridge Tip]
+    end
+
+    PAPER[(Paper Surface)]
+
+    USB -->|VBUS| PMIC
+    PMIC -->|Charges| BATTERY
+    BATTERY -->|3.3V| MCU
+    PMIC -->|3.3V| MCU
+
+    MCU <-->|SPI/CSI| CAMERA
+    MCU <-->|Analog/Digital I/O| FSR
+
+    CAMERA -->|Views| VIEW
+    VIEW -->|Captures| PAPER
+
+    FSR -->|Physical Force| INK
+    INK -->|Writes on| PAPER
+
+    MCU <-.->|Wireless Data Stream| APP((Mobile App))
+
+    style CAP fill:#e1f5fe
+    style POWER fill:#fff3e0
+    style MCU_SECTION fill:#e8f5e9
+    style SENSORS fill:#fce4ec
+    style TIP fill:#f3e5f5

@@ -1,0 +1,75 @@
+# Smart Pen Internal Architecture
+# Render with: d2 smart-pen-diagram.d2 smart-pen-diagram.svg
+
+direction: down
+
+cap: "TOP END - CAP AREA" {
+  style.fill: "#e1f5fe"
+  usb: USB-C Charging Port
+  led: Status LED
+}
+
+power: "POWER MANAGEMENT" {
+  style.fill: "#fff3e0"
+  pmic: PMIC Circuit {
+    tooltip: "Regulates voltage for MCU and sensors\nControls LiPo charging"
+  }
+  battery: LiPo Battery Cell {
+    shape: cylinder
+    tooltip: "Main power source, sits in upper barrel"
+  }
+}
+
+main_pcb: "MAIN PCB" {
+  style.fill: "#e8f5e9"
+  mcu: "MCU + Wireless Module\n(ESP32 / nRF)" {
+    tooltip: "Brains: Processes sensor data & images"
+  }
+  radio: "BLE / WiFi Antenna"
+}
+
+lower_barrel: "LOWER BARREL" {
+  style.fill: "#fce4ec"
+  camera: "Micro-Camera Module" {
+    tooltip: "Angled downward to view writing surface just past the tip"
+  }
+  view_cone: "View Cone ↓" {
+    shape: parallelogram
+  }
+}
+
+tip: "PEN TIP ASSEMBLY" {
+  style.fill: "#f3e5f5"
+  fsr: "Pressure Sensor (FSR)" {
+    tooltip: "Force Sensitive Resistor - sits behind ink cartridge holder"
+  }
+  ink: "Ink Cartridge Tip"
+}
+
+paper: "PAPER SURFACE" {
+  shape: page
+}
+
+app: "Mobile App" {
+  shape: oval
+  style.fill: "#c8e6c9"
+}
+
+# Connections
+cap.usb -> power.pmic: VBUS
+power.pmic -> power.battery: Charges
+power.battery -> main_pcb.mcu: "3.3V"
+power.pmic -> main_pcb.mcu: "3.3V"
+
+main_pcb.mcu <-> lower_barrel.camera: "SPI/CSI\nCamera Data"
+main_pcb.mcu <-> tip.fsr: "Analog I/O\nPressure Data"
+
+lower_barrel.camera -> lower_barrel.view_cone
+lower_barrel.view_cone -> paper: Captures
+
+tip.fsr -> tip.ink: "Physical Force"
+tip.ink -> paper: "Writes on"
+
+main_pcb.mcu <-> app: "Wireless Data Stream" {
+  style.stroke-dash: 5
+}

@@ -1,0 +1,60 @@
+---
+title: POC1 - Breadboard Prototype
+---
+flowchart TB
+    subgraph POWER["POWER"]
+        USB_C[USB-C Input]
+        TP4056[TP4056 Charger]
+        LIPO[LiPo 500mAh]
+    end
+
+    subgraph MCU["ESP32-S3-DevKitC-1"]
+        CPU[Dual-Core CPU]
+        WIFI[WiFi / BLE Radio]
+        ADC[ADC Pin - GPIO 1]
+        SPI1[SPI Bus - Camera]
+        SPI2[SPI Bus - Flash]
+    end
+
+    subgraph SENSORS["SENSORS"]
+        CAM[OV2640 Camera Module]
+        FSR[FSR 402 Pressure Sensor]
+    end
+
+    subgraph STORAGE["LOCAL STORAGE"]
+        FLASH[W25Q128 16MB Flash]
+    end
+
+    subgraph OUTPUT["SYNC OUTPUT"]
+        BACKEND[FiatLux Backend]
+        RAW[(raw/ storage)]
+        WORKER[Worker Agent]
+    end
+
+    %% Power flow
+    USB_C -->|5V| TP4056
+    TP4056 -->|Charges| LIPO
+    LIPO -->|3.3V regulated| MCU
+
+    %% Sensor data flow
+    CAM -->|CSI/SPI\n100+ fps| SPI1
+    FSR -->|Analog\n0-4095| ADC
+
+    %% Processing flow
+    SPI1 --> CPU
+    ADC --> CPU
+    CPU -->|"Optical flow +\nstroke data"| SPI2
+    SPI2 --> FLASH
+
+    %% Sync flow
+    FLASH -.->|"Sync trigger\n(USB/WiFi/Button)"| WIFI
+    WIFI -.->|"POST /ingest/pen"| BACKEND
+    BACKEND --> RAW
+    RAW --> WORKER
+
+    %% Styling
+    style POWER fill:#fff3e0,stroke:#ff9800
+    style MCU fill:#e8f5e9,stroke:#43a047
+    style SENSORS fill:#fce4ec,stroke:#e91e63
+    style STORAGE fill:#e3f2fd,stroke:#1976d2
+    style OUTPUT fill:#f3e5f5,stroke:#7b1fa2
