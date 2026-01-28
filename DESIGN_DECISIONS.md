@@ -55,10 +55,37 @@ This document tracks critical design decisions made during development. Agents s
 - Color stored as hex string for serialization
 - macOS still uses custom toolbar since PKToolPicker is iOS-only
 
+### [2026-01-28] Shape Drawing Implementation
+**Context:** Need to add shape tools (rectangle, circle, line, arrow) to the drawing canvas for iPad.
+**Decision:** Implemented shapes as a separate data structure (`DrawingShape`) stored alongside freehand lines in `PageData`. Shape recognition uses explicit user confirmation prompt rather than auto-conversion.
+**Rationale:**
+1. Separating shapes from lines allows proper rendering, selection, and editing of shapes
+2. Explicit confirmation for shape recognition prevents frustrating auto-corrections when user intentionally draws rough shapes
+3. Shapes stored with their own stroke/fill colors enables future color picker integration
+4. The `ShapeRecognizer` uses scoring algorithms (line deviation, perimeter distance, radius variance) with a configurable threshold (default 0.75) to balance between catching intended shapes and avoiding false positives
+**Alternatives Considered:**
+- Auto-convert without prompt (rejected: user frustration on false positives)
+- Real-time recognition as you draw (rejected: too distracting, performance concerns)
+- PencilKit shapes only on iOS (rejected: want consistent experience across platforms)
+
+### [2026-01-28] Shape Tool Architecture
+**Context:** How should shape tools integrate with existing pencil/eraser workflow?
+**Decision:** Extended `DrawingTool` enum with `.shape(ShapeType)` and `.shapePen` cases. Shape drawing uses drag gesture from start to end point. Shape pen mode draws freehand then offers conversion.
+**Rationale:**
+1. Consistent tool switching pattern - shapes feel like other drawing tools
+2. Drag-to-draw is intuitive for shapes (same as most drawing apps)
+3. Shape pen provides best of both worlds - freehand feel with clean output option
+4. Shapes render in Canvas alongside lines, maintaining z-order by draw sequence
+**Alternatives Considered:**
+- Separate shape layer (rejected: adds complexity, breaks mental model of "one canvas")
+- Modal shape mode with separate gestures (rejected: context switching overhead)
+- Ruler tool for straight lines (deferred: shape pen + line tool covers use case for now)
+
 ---
 
 ## Pending Decisions
 
 - **Layer Architecture**: How do layers interact with text boxes? Separate systems or text as special layer type?
-- **Shape Recognition**: Real-time recognition vs explicit "convert to shape" action?
 - **User Auth Provider**: Clerk confirmed as preference, but need to finalize JWT validation approach in Lambda.
+- **Ruler Tool**: Should we add a separate ruler/straightedge tool or is shape pen + line shape sufficient?
+- **Shape Selection**: Need to add ability to select, move, resize shapes after drawing

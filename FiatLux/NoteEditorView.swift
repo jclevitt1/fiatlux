@@ -29,6 +29,8 @@ struct NoteEditorView: View {
     @State private var currentTool: DrawingTool = .pencil
     @State private var currentMode: NoteMode = .notes
     @State private var showingModeMenu: Bool = false
+    @State private var showingShapeMenu: Bool = false
+    @State private var selectedShapeType: ShapeType = .rectangle
     @State private var exportMessage: String? = nil
     @State private var showingExportAlert: Bool = false
     @State private var currentPageIndex: Int = 0
@@ -77,6 +79,7 @@ struct NoteEditorView: View {
                             .foregroundStyle(currentTool == .pencil ? .blue : .secondary)
                     }
                     .buttonStyle(.plain)
+                    .help("Pencil")
 
                     Button {
                         currentTool = .eraser
@@ -86,6 +89,77 @@ struct NoteEditorView: View {
                             .foregroundStyle(currentTool == .eraser ? .blue : .secondary)
                     }
                     .buttonStyle(.plain)
+                    .help("Eraser")
+
+                    Divider()
+                        .frame(height: 24)
+
+                    // Shape tools
+                    Button {
+                        showingShapeMenu.toggle()
+                    } label: {
+                        Image(systemName: selectedShapeType.icon)
+                            .font(.title2)
+                            .foregroundStyle(currentTool.isShapeTool ? .blue : .secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Shapes")
+                    .popover(isPresented: $showingShapeMenu, arrowEdge: .bottom) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Shapes")
+                                .font(.headline)
+                                .padding(.bottom, 4)
+
+                            ForEach(ShapeType.allCases, id: \.self) { shapeType in
+                                Button {
+                                    selectedShapeType = shapeType
+                                    currentTool = .shape(shapeType)
+                                    showingShapeMenu = false
+                                } label: {
+                                    HStack {
+                                        Image(systemName: shapeType.icon)
+                                            .frame(width: 24)
+                                        Text(shapeType.displayName)
+                                        Spacer()
+                                        if case .shape(let selected) = currentTool, selected == shapeType {
+                                            Image(systemName: "checkmark")
+                                                .foregroundStyle(.blue)
+                                        }
+                                    }
+                                    .padding(.vertical, 4)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+
+                            Divider()
+
+                            Button {
+                                currentTool = .shapePen
+                                showingShapeMenu = false
+                            } label: {
+                                HStack {
+                                    Image(systemName: "scribble.variable")
+                                        .frame(width: 24)
+                                    Text("Shape Pen")
+                                    Spacer()
+                                    if currentTool == .shapePen {
+                                        Image(systemName: "checkmark")
+                                            .foregroundStyle(.blue)
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+
+                            Text("Draw freehand, auto-converts to shapes")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding()
+                        .frame(width: 220)
+                    }
 
                     Divider()
                         .frame(height: 24)
@@ -234,12 +308,16 @@ struct NoteEditorView: View {
 
             // Multi-page notebook
             #if os(iOS)
-            CanvasView(canvasView: $canvasView)
-                .onAppear {
-                    if let note = note {
-                        canvasView.drawing = note.drawing
-                    }
+            CanvasView(
+                canvasView: $canvasView,
+                currentTool: $currentTool,
+                shapes: $pages[currentPageIndex].shapes
+            )
+            .onAppear {
+                if let note = note {
+                    canvasView.drawing = note.drawing
                 }
+            }
             #else
             GeometryReader { geometry in
                 let availableWidth = geometry.size.width - 40  // padding
@@ -465,7 +543,7 @@ struct PageCanvasView: View {
     }
 
     var body: some View {
-        CanvasView(drawingData: $page.drawingData, currentTool: $currentTool)
+        CanvasView(drawingData: $page.drawingData, currentTool: $currentTool, shapes: $page.shapes)
             .frame(width: canvasSize.width, height: canvasSize.height)
             .onAppear(perform: onAppear)
     }

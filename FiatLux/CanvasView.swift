@@ -7,9 +7,18 @@
 
 import SwiftUI
 
-enum DrawingTool {
+enum DrawingTool: Equatable {
     case pencil
     case eraser
+    case shape(ShapeType)
+    case shapePen  // Freehand with shape recognition
+
+    var isShapeTool: Bool {
+        switch self {
+        case .shape, .shapePen: return true
+        default: return false
+        }
+    }
 }
 
 #if os(iOS)
@@ -87,7 +96,148 @@ extension UIColor {
     }
 }
 
-struct CanvasView: UIViewRepresentable {
+// MARK: - iOS Hybrid Canvas (PencilKit + Shapes)
+
+struct CanvasView: View {
+    @Binding var canvasView: PKCanvasView
+    @Binding var currentTool: DrawingTool
+    @Binding var shapes: [DrawingShape]
+
+    @State private var shapeStart: CGPoint? = nil
+    @State private var shapeEnd: CGPoint? = nil
+    @State private var recognizedShape: DrawingShape? = nil
+    @State private var showRecognitionPrompt: Bool = false
+    @State private var freehandPoints: [CGPoint] = []
+
+    var body: some View {
+        ZStack {
+            // PencilKit canvas for regular drawing (hidden during shape mode)
+            PencilKitCanvas(canvasView: $canvasView)
+                .allowsHitTesting(!currentTool.isShapeTool)
+
+            // Shape overlay
+            Canvas { context, size in
+                // Draw all shapes
+                for shape in shapes {
+                    let shapePath = shape.path()
+                    if let fill = shape.fillColor {
+                        context.fill(shapePath, with: .color(fill.color))
+                    }
+                    context.stroke(shapePath, with: .color(shape.strokeColor.color), lineWidth: shape.strokeWidth)
+                }
+
+                // Preview shape being drawn
+                if case .shape(let shapeType) = currentTool,
+                   let start = shapeStart, let end = shapeEnd {
+                    let previewShape = DrawingShape(type: shapeType, startPoint: start, endPoint: end)
+                    let previewPath = previewShape.path()
+                    context.stroke(previewPath, with: .color(.blue.opacity(0.7)), style: StrokeStyle(lineWidth: 3, dash: [5, 3]))
+                }
+
+                // Freehand preview for shape pen
+                if currentTool == .shapePen && !freehandPoints.isEmpty {
+                    var path = Path()
+                    if let first = freehandPoints.first {
+                        path.move(to: first)
+                        for point in freehandPoints.dropFirst() {
+                            path.addLine(to: point)
+                        }
+                    }
+                    context.stroke(path, with: .color(.black), lineWidth: 3)
+                }
+            }
+            .allowsHitTesting(currentTool.isShapeTool)
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        handleDragChanged(value)
+                    }
+                    .onEnded { value in
+                        handleDragEnded(value)
+                    }
+            )
+
+            // Shape recognition prompt
+            if showRecognitionPrompt, let recognized = recognizedShape {
+                VStack {
+                    Spacer()
+                    shapeRecognitionPrompt(shape: recognized)
+                        .padding()
+                }
+            }
+        }
+    }
+
+    private func handleDragChanged(_ value: DragGesture.Value) {
+        switch currentTool {
+        case .shape:
+            if shapeStart == nil {
+                shapeStart = value.startLocation
+            }
+            shapeEnd = value.location
+
+        case .shapePen:
+            freehandPoints.append(value.location)
+
+        default:
+            break
+        }
+    }
+
+    private func handleDragEnded(_ value: DragGesture.Value) {
+        switch currentTool {
+        case .shape(let shapeType):
+            if let start = shapeStart, let end = shapeEnd {
+                let newShape = DrawingShape(type: shapeType, startPoint: start, endPoint: end)
+                shapes.append(newShape)
+            }
+            shapeStart = nil
+            shapeEnd = nil
+
+        case .shapePen:
+            if !freehandPoints.isEmpty {
+                if let recognized = ShapeRecognizer.recognize(points: freehandPoints) {
+                    recognizedShape = recognized
+                    showRecognitionPrompt = true
+                }
+                freehandPoints = []
+            }
+
+        default:
+            break
+        }
+    }
+
+    @ViewBuilder
+    private func shapeRecognitionPrompt(shape: DrawingShape) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: shape.type.icon)
+                .font(.title2)
+
+            Text("Convert to \(shape.type.displayName)?")
+                .font(.subheadline)
+
+            Button("Yes") {
+                shapes.append(shape)
+                showRecognitionPrompt = false
+                recognizedShape = nil
+            }
+            .buttonStyle(.borderedProminent)
+
+            Button("No") {
+                showRecognitionPrompt = false
+                recognizedShape = nil
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+// MARK: - PencilKit UIViewRepresentable
+
+struct PencilKitCanvas: UIViewRepresentable {
     @Binding var canvasView: PKCanvasView
 
     func makeCoordinator() -> Coordinator {
@@ -135,9 +285,14 @@ struct CanvasView: UIViewRepresentable {
 struct CanvasView: View {
     @Binding var drawingData: Data
     @Binding var currentTool: DrawingTool
+    @Binding var shapes: [DrawingShape]
     @State private var lines: [DrawingLine] = []
     @State private var currentLine: [CGPoint] = []
     @State private var eraserPosition: CGPoint? = nil
+    @State private var shapeStart: CGPoint? = nil
+    @State private var shapeEnd: CGPoint? = nil
+    @State private var recognizedShape: DrawingShape? = nil
+    @State private var showRecognitionPrompt: Bool = false
 
     private let eraserRadius: CGFloat = 20
 
@@ -146,94 +301,199 @@ struct CanvasView: View {
     }
 
     var body: some View {
-        Canvas { context, size in
-            // Draw all lines
-            for line in lines {
-                var path = Path()
-                if let first = line.points.first {
-                    path.move(to: first)
-                    for point in line.points.dropFirst() {
-                        path.addLine(to: point)
-                    }
-                }
-                context.stroke(path, with: .color(.black), lineWidth: 3)
-            }
-
-            // Current line being drawn (pencil only)
-            if currentTool == .pencil {
-                var currentPath = Path()
-                if let first = currentLine.first {
-                    currentPath.move(to: first)
-                    for point in currentLine.dropFirst() {
-                        currentPath.addLine(to: point)
-                    }
-                }
-                context.stroke(currentPath, with: .color(.black), lineWidth: 3)
-            }
-
-            // Eraser cursor
-            if currentTool == .eraser, let pos = eraserPosition {
-                let rect = CGRect(
-                    x: pos.x - eraserRadius,
-                    y: pos.y - eraserRadius,
-                    width: eraserRadius * 2,
-                    height: eraserRadius * 2
-                )
-                context.stroke(Circle().path(in: rect), with: .color(.gray), lineWidth: 2)
-                context.fill(Circle().path(in: rect), with: .color(.white.opacity(0.3)))
-            }
-        }
-        .background(Color.white)
-        .border(Color.gray.opacity(0.3), width: 1)
-        .onContinuousHover { phase in
-            switch phase {
-            case .active(let location):
-                if currentTool == .eraser {
-                    eraserPosition = location
-                }
-            case .ended:
-                eraserPosition = nil
-            }
-        }
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    if currentTool == .pencil {
-                        currentLine.append(value.location)
-                    } else {
-                        // Eraser mode - remove points near cursor
-                        eraserPosition = value.location
-                        eraseAt(value.location)
-                    }
-                }
-                .onEnded { _ in
-                    if currentTool == .pencil {
-                        if !currentLine.isEmpty {
-                            lines.append(DrawingLine(points: currentLine))
-                            currentLine = []
+        ZStack {
+            Canvas { context, size in
+                // Draw all lines
+                for line in lines {
+                    var path = Path()
+                    if let first = line.points.first {
+                        path.move(to: first)
+                        for point in line.points.dropFirst() {
+                            path.addLine(to: point)
                         }
                     }
-                    saveDrawing()
+                    context.stroke(path, with: .color(.black), lineWidth: 3)
                 }
-        )
+
+                // Draw all shapes
+                for shape in shapes {
+                    let shapePath = shape.path()
+                    if let fill = shape.fillColor {
+                        context.fill(shapePath, with: .color(fill.color))
+                    }
+                    context.stroke(shapePath, with: .color(shape.strokeColor.color), lineWidth: shape.strokeWidth)
+                }
+
+                // Current line being drawn (pencil or shapePen)
+                if currentTool == .pencil || currentTool == .shapePen {
+                    var currentPath = Path()
+                    if let first = currentLine.first {
+                        currentPath.move(to: first)
+                        for point in currentLine.dropFirst() {
+                            currentPath.addLine(to: point)
+                        }
+                    }
+                    context.stroke(currentPath, with: .color(.black), lineWidth: 3)
+                }
+
+                // Preview shape being drawn
+                if case .shape(let shapeType) = currentTool,
+                   let start = shapeStart, let end = shapeEnd {
+                    let previewShape = DrawingShape(type: shapeType, startPoint: start, endPoint: end)
+                    let previewPath = previewShape.path()
+                    context.stroke(previewPath, with: .color(.blue.opacity(0.7)), style: StrokeStyle(lineWidth: 3, dash: [5, 3]))
+                }
+
+                // Eraser cursor
+                if currentTool == .eraser, let pos = eraserPosition {
+                    let rect = CGRect(
+                        x: pos.x - eraserRadius,
+                        y: pos.y - eraserRadius,
+                        width: eraserRadius * 2,
+                        height: eraserRadius * 2
+                    )
+                    context.stroke(Circle().path(in: rect), with: .color(.gray), lineWidth: 2)
+                    context.fill(Circle().path(in: rect), with: .color(.white.opacity(0.3)))
+                }
+            }
+            .background(Color.white)
+            .border(Color.gray.opacity(0.3), width: 1)
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let location):
+                    if currentTool == .eraser {
+                        eraserPosition = location
+                    }
+                case .ended:
+                    eraserPosition = nil
+                }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        handleDragChanged(value)
+                    }
+                    .onEnded { value in
+                        handleDragEnded(value)
+                    }
+            )
+
+            // Shape recognition prompt overlay
+            if showRecognitionPrompt, let recognized = recognizedShape {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        shapeRecognitionPrompt(shape: recognized)
+                            .padding()
+                        Spacer()
+                    }
+                }
+                .padding(.bottom, 20)
+            }
+        }
         .onAppear {
             loadDrawing()
         }
     }
 
-    private func eraseAt(_ point: CGPoint) {
-        // Split lines where points are erased, creating new separate line segments
-        var newLines: [DrawingLine] = []
+    private func handleDragChanged(_ value: DragGesture.Value) {
+        switch currentTool {
+        case .pencil:
+            currentLine.append(value.location)
 
+        case .shapePen:
+            currentLine.append(value.location)
+
+        case .eraser:
+            eraserPosition = value.location
+            eraseAt(value.location)
+
+        case .shape:
+            if shapeStart == nil {
+                shapeStart = value.startLocation
+            }
+            shapeEnd = value.location
+        }
+    }
+
+    private func handleDragEnded(_ value: DragGesture.Value) {
+        switch currentTool {
+        case .pencil:
+            if !currentLine.isEmpty {
+                lines.append(DrawingLine(points: currentLine))
+                currentLine = []
+            }
+            saveDrawing()
+
+        case .shapePen:
+            if !currentLine.isEmpty {
+                // Try to recognize shape
+                if let recognized = ShapeRecognizer.recognize(points: currentLine) {
+                    recognizedShape = recognized
+                    showRecognitionPrompt = true
+                } else {
+                    // No shape recognized, keep as freehand
+                    lines.append(DrawingLine(points: currentLine))
+                    saveDrawing()
+                }
+                currentLine = []
+            }
+
+        case .eraser:
+            saveDrawing()
+
+        case .shape(let shapeType):
+            if let start = shapeStart, let end = shapeEnd {
+                let newShape = DrawingShape(type: shapeType, startPoint: start, endPoint: end)
+                shapes.append(newShape)
+            }
+            shapeStart = nil
+            shapeEnd = nil
+        }
+    }
+
+    @ViewBuilder
+    private func shapeRecognitionPrompt(shape: DrawingShape) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: shape.type.icon)
+                .font(.title2)
+
+            Text("Convert to \(shape.type.displayName)?")
+                .font(.subheadline)
+
+            Button("Yes") {
+                shapes.append(shape)
+                showRecognitionPrompt = false
+                recognizedShape = nil
+            }
+            .buttonStyle(.borderedProminent)
+
+            Button("No") {
+                // Keep original freehand stroke
+                if !currentLine.isEmpty {
+                    lines.append(DrawingLine(points: currentLine))
+                    saveDrawing()
+                }
+                showRecognitionPrompt = false
+                recognizedShape = nil
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func eraseAt(_ point: CGPoint) {
+        // Erase lines
+        var newLines: [DrawingLine] = []
         for line in lines {
             var currentSegment: [CGPoint] = []
 
             for linePoint in line.points {
                 if distance(from: linePoint, to: point) > eraserRadius {
-                    // Point is outside eraser - keep it
                     currentSegment.append(linePoint)
                 } else {
-                    // Point is inside eraser - split here
                     if currentSegment.count >= 2 {
                         newLines.append(DrawingLine(points: currentSegment))
                     }
@@ -241,13 +501,16 @@ struct CanvasView: View {
                 }
             }
 
-            // Don't forget the last segment
             if currentSegment.count >= 2 {
                 newLines.append(DrawingLine(points: currentSegment))
             }
         }
-
         lines = newLines
+
+        // Erase shapes that contain the point
+        shapes.removeAll { shape in
+            shape.contains(point: point)
+        }
     }
 
     private func distance(from p1: CGPoint, to p2: CGPoint) -> CGFloat {

@@ -30,9 +30,11 @@ enum PageOrientation: String, Codable, CaseIterable {
 struct PageData: Codable {
     var drawingData: Data
     var orientation: PageOrientation
+    var shapes: [DrawingShape]
 
-    init(drawingData: Data = Data(), orientation: PageOrientation = .portrait) {
+    init(drawingData: Data = Data(), orientation: PageOrientation = .portrait, shapes: [DrawingShape] = []) {
         self.drawingData = drawingData
         self.orientation = orientation
+        self.shapes = shapes
     }
 }

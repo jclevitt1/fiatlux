@@ -91,56 +91,146 @@ struct PDFExporter {
             pdfContext.setFillColor(CGColor.white)
             pdfContext.fill(pageRect)
 
+            // Find bounds of all content (lines + shapes)
+            var minX: CGFloat = .greatestFiniteMagnitude
+            var minY: CGFloat = .greatestFiniteMagnitude
+            var maxX: CGFloat = 0
+            var maxY: CGFloat = 0
+
             // Decode the drawing lines
-            if let lines = try? JSONDecoder().decode([DrawingLine].self, from: pageData.drawingData) {
-                print("DEBUG PDFExporter: Decoded \(lines.count) lines")
+            let lines = (try? JSONDecoder().decode([DrawingLine].self, from: pageData.drawingData)) ?? []
+            print("DEBUG PDFExporter: Decoded \(lines.count) lines, \(pageData.shapes.count) shapes")
 
-                // Find the bounds of all drawing content
-                var minX: CGFloat = .greatestFiniteMagnitude
-                var minY: CGFloat = .greatestFiniteMagnitude
-                var maxX: CGFloat = 0
-                var maxY: CGFloat = 0
+            for line in lines {
+                for point in line.points {
+                    minX = min(minX, point.x)
+                    minY = min(minY, point.y)
+                    maxX = max(maxX, point.x)
+                    maxY = max(maxY, point.y)
+                }
+            }
 
-                for line in lines {
-                    for point in line.points {
-                        minX = min(minX, point.x)
-                        minY = min(minY, point.y)
-                        maxX = max(maxX, point.x)
-                        maxY = max(maxY, point.y)
+            for shape in pageData.shapes {
+                let bounds = shape.bounds
+                minX = min(minX, bounds.minX)
+                minY = min(minY, bounds.minY)
+                maxX = max(maxX, bounds.maxX)
+                maxY = max(maxY, bounds.maxY)
+            }
+
+            // Canvas aspect ratio depends on page orientation
+            let canvasRatio: CGFloat = pageData.orientation.aspectRatio
+            let estimatedCanvasWidth = max(maxX + 20, 400)
+            let estimatedCanvasHeight = estimatedCanvasWidth * canvasRatio
+
+            // Scale to fit PDF while maintaining aspect ratio
+            let scale = min(pageWidth / estimatedCanvasWidth, pageHeight / estimatedCanvasHeight)
+
+            // Draw lines
+            pdfContext.setStrokeColor(CGColor.black)
+            pdfContext.setLineWidth(3 * scale)
+            pdfContext.setLineCap(.round)
+            pdfContext.setLineJoin(.round)
+
+            for line in lines {
+                if line.points.count >= 2 {
+                    pdfContext.beginPath()
+                    let firstPoint = line.points[0]
+
+                    pdfContext.move(to: CGPoint(
+                        x: firstPoint.x * scale,
+                        y: pageHeight - (firstPoint.y * scale)
+                    ))
+
+                    for point in line.points.dropFirst() {
+                        pdfContext.addLine(to: CGPoint(
+                            x: point.x * scale,
+                            y: pageHeight - (point.y * scale)
+                        ))
                     }
+                    pdfContext.strokePath()
+                }
+            }
+
+            // Draw shapes
+            for shape in pageData.shapes {
+                pdfContext.setStrokeColor(CGColor(
+                    red: shape.strokeColor.red,
+                    green: shape.strokeColor.green,
+                    blue: shape.strokeColor.blue,
+                    alpha: shape.strokeColor.alpha
+                ))
+                pdfContext.setLineWidth(shape.strokeWidth * scale)
+
+                // Transform helper for PDF coordinates
+                func pdfPoint(_ p: CGPoint) -> CGPoint {
+                    CGPoint(x: p.x * scale, y: pageHeight - (p.y * scale))
                 }
 
-                // Canvas aspect ratio depends on page orientation
-                let canvasRatio: CGFloat = pageData.orientation.aspectRatio
-                let estimatedCanvasWidth = max(maxX + 20, 400)  // At least some minimum
-                let estimatedCanvasHeight = estimatedCanvasWidth * canvasRatio
-
-                // Scale to fit PDF while maintaining aspect ratio
-                let scale = min(pageWidth / estimatedCanvasWidth, pageHeight / estimatedCanvasHeight)
-
-                pdfContext.setStrokeColor(CGColor.black)
-                pdfContext.setLineWidth(3 * scale)
-                pdfContext.setLineCap(.round)
-                pdfContext.setLineJoin(.round)
-
-                for line in lines {
-                    if line.points.count >= 2 {
-                        pdfContext.beginPath()
-                        let firstPoint = line.points[0]
-
-                        pdfContext.move(to: CGPoint(
-                            x: firstPoint.x * scale,
-                            y: pageHeight - (firstPoint.y * scale) // Flip Y for PDF
-                        ))
-
-                        for point in line.points.dropFirst() {
-                            pdfContext.addLine(to: CGPoint(
-                                x: point.x * scale,
-                                y: pageHeight - (point.y * scale)
-                            ))
-                        }
-                        pdfContext.strokePath()
+                switch shape.type {
+                case .rectangle:
+                    let bounds = shape.bounds
+                    let pdfBounds = CGRect(
+                        x: bounds.minX * scale,
+                        y: pageHeight - (bounds.maxY * scale),
+                        width: bounds.width * scale,
+                        height: bounds.height * scale
+                    )
+                    if let fill = shape.fillColor {
+                        pdfContext.setFillColor(CGColor(red: fill.red, green: fill.green, blue: fill.blue, alpha: fill.alpha))
+                        pdfContext.fill(pdfBounds)
                     }
+                    pdfContext.stroke(pdfBounds)
+
+                case .circle:
+                    let bounds = shape.bounds
+                    let pdfBounds = CGRect(
+                        x: bounds.minX * scale,
+                        y: pageHeight - (bounds.maxY * scale),
+                        width: bounds.width * scale,
+                        height: bounds.height * scale
+                    )
+                    if let fill = shape.fillColor {
+                        pdfContext.setFillColor(CGColor(red: fill.red, green: fill.green, blue: fill.blue, alpha: fill.alpha))
+                        pdfContext.fillEllipse(in: pdfBounds)
+                    }
+                    pdfContext.strokeEllipse(in: pdfBounds)
+
+                case .line:
+                    pdfContext.beginPath()
+                    pdfContext.move(to: pdfPoint(shape.startPoint))
+                    pdfContext.addLine(to: pdfPoint(shape.endPoint))
+                    pdfContext.strokePath()
+
+                case .arrow:
+                    // Main line
+                    let start = pdfPoint(shape.startPoint)
+                    let end = pdfPoint(shape.endPoint)
+                    pdfContext.beginPath()
+                    pdfContext.move(to: start)
+                    pdfContext.addLine(to: end)
+                    pdfContext.strokePath()
+
+                    // Arrowhead
+                    let angle = atan2(end.y - start.y, end.x - start.x)
+                    let arrowLength: CGFloat = 15 * scale
+                    let arrowAngle: CGFloat = .pi / 6
+
+                    let arrow1 = CGPoint(
+                        x: end.x - arrowLength * cos(angle - arrowAngle),
+                        y: end.y - arrowLength * sin(angle - arrowAngle)
+                    )
+                    let arrow2 = CGPoint(
+                        x: end.x - arrowLength * cos(angle + arrowAngle),
+                        y: end.y - arrowLength * sin(angle + arrowAngle)
+                    )
+
+                    pdfContext.beginPath()
+                    pdfContext.move(to: end)
+                    pdfContext.addLine(to: arrow1)
+                    pdfContext.move(to: end)
+                    pdfContext.addLine(to: arrow2)
+                    pdfContext.strokePath()
                 }
             }
 
