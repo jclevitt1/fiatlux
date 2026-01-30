@@ -604,14 +604,20 @@ Respond with JSON:
 Generate complete, working code for all files. No placeholders or TODOs."""
             })
 
-            message = self.client.messages.create(
+            # Use streaming for large max_tokens (SDK requires it for >10min operations)
+            response_text = ""
+            stop_reason = None
+
+            with self.client.messages.stream(
                 model="claude-sonnet-4-20250514",
                 max_tokens=64000,  # Model maximum - no artificial limit
                 messages=[{"role": "user", "content": content}]
-            )
-
-            response_text = message.content[0].text
-            stop_reason = message.stop_reason
+            ) as stream:
+                for text in stream.text_stream:
+                    response_text += text
+                # Get final message for stop_reason
+                final_message = stream.get_final_message()
+                stop_reason = final_message.stop_reason
 
             print(f"[Execute] Response length: {len(response_text)}, stop_reason: {stop_reason}")
 
