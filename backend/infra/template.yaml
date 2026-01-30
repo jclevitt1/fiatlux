@@ -156,6 +156,9 @@ Resources:
       CodeUri: ../
       Handler: lambda.api_handler.lambda_handler
       Description: FiatLux API endpoints
+      Environment:
+        Variables:
+          PROCESSOR_FUNCTION: !Sub fiatlux-processor-${Stage}
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref JobsTable
@@ -163,6 +166,8 @@ Resources:
             TableName: !Ref ProjectsTable
         - S3CrudPolicy:
             BucketName: !Sub fiatlux-storage-${Stage}-${AWS::AccountId}
+        - LambdaInvokePolicy:
+            FunctionName: !Sub fiatlux-processor-${Stage}
       Events:
         Health:
           Type: HttpApi

@@ -105,21 +105,30 @@ def handle_s3_event(record: dict):
 
     print(f"Extracted user_id: {user_id}, project_name: {project_name}")
 
-    # Default to EXECUTE job type (AI decides what to do)
-    job_type = JobType.EXECUTE
+    # Check if there's already a PENDING job for this file (created by /execute endpoint)
+    # This ensures we use the project_name from the iOS app, not extracted from path
+    existing_jobs = job_store.list_user_jobs(user_id, limit=20)
+    existing_job = None
+    for j in existing_jobs:
+        if j.raw_file_path == key and j.status == JobStatus.PENDING:
+            existing_job = j
+            print(f"Found existing pending job {j.id} for {key}, using it instead of creating new")
+            break
 
-    # Create a job for this file with project_name
-    job = Job(
-        id=str(uuid.uuid4()),
-        job_type=job_type,
-        status=JobStatus.PENDING,
-        raw_file_path=key,
-        additional_text='',
-        project_id=None,
-        project_name=project_name
-    )
-
-    job_store.create_job(job, user_id=user_id)
+    if existing_job:
+        job = existing_job
+    else:
+        # No existing job - create one (for direct S3 uploads not through /execute)
+        job = Job(
+            id=str(uuid.uuid4()),
+            job_type=JobType.EXECUTE,
+            status=JobStatus.PENDING,
+            raw_file_path=key,
+            additional_text='',
+            project_id=None,
+            project_name=project_name
+        )
+        job_store.create_job(job, user_id=user_id)
     print(f"Created job {job.id} for {key} (type: {job_type.value}, user: {user_id})")
 
     # Process the job

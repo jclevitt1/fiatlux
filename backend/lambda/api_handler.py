@@ -634,6 +634,21 @@ def handle_execute(body: dict, user_id: str):
 
     print(f"[Execute] Created job {job.id} for user {user_id}, project: {safe_project_name}, file: {file_path}")
 
+    # Invoke processor Lambda asynchronously to process the job
+    # This ensures the job exists with correct project_name before processing
+    try:
+        lambda_client = boto3.client('lambda')
+        processor_function = os.environ.get('PROCESSOR_FUNCTION', 'fiatlux-processor-dev')
+        lambda_client.invoke(
+            FunctionName=processor_function,
+            InvocationType='Event',  # Async invocation
+            Payload=json.dumps({'job_id': job.id})
+        )
+        print(f"[Execute] Invoked processor Lambda for job {job.id}")
+    except Exception as e:
+        print(f"[Execute] Warning: Failed to invoke processor: {e}")
+        # Don't fail the request - S3 trigger will pick it up as backup
+
     return response(200, {
         'job_id': job.id,
         'status': job.status.value,
