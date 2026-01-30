@@ -23,7 +23,7 @@ import boto3
 from anthropic import Anthropic
 
 from models.job import Job, JobStatus, JobType
-from storage.dynamodb import DynamoDBJobStore
+from storage.dynamodb import DynamoDBJobStore, ProjectStore
 from storage.s3 import S3Storage
 from agents.summarize import SummarizeAgent
 from agents.create_project import CreateProjectAgent
@@ -37,6 +37,7 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 
 # Initialize services
 job_store = DynamoDBJobStore(table_name=JOBS_TABLE, region=AWS_REGION)
+project_store = ProjectStore(region=AWS_REGION)
 storage = S3Storage(bucket_name=S3_BUCKET)
 
 # Use synchronous Anthropic client for Lambda
@@ -176,6 +177,41 @@ def process_job(job: Job):
             job.result = result.data
             job.output_path = result.data.get('output_path') or result.data.get('project_path')
             print(f"Job {job.id} completed successfully: {job.output_path}")
+
+            # Create project record in DynamoDB for EXECUTE jobs
+            if job.job_type == JobType.EXECUTE and result.data:
+                try:
+                    user_id = result.data.get('user_id')
+                    project_name = result.data.get('project_name', 'Untitled')
+                    description = result.data.get('description', '')
+                    tech_stack = result.data.get('tech_stack', [])
+                    files_created = result.data.get('files_created', [])
+
+                    # Determine language/framework from tech stack
+                    language = tech_stack[0].lower() if tech_stack else ''
+                    framework = tech_stack[1].lower() if len(tech_stack) > 1 else ''
+
+                    project = project_store.create_project(
+                        user_id=user_id,
+                        name=project_name,
+                        description=description,
+                        language=language,
+                        framework=framework,
+                        source_job_id=job.id
+                    )
+
+                    # Update file count
+                    project_store.update_project_stats(
+                        user_id=user_id,
+                        project_id=project['project_id'],
+                        file_count=len(files_created),
+                        total_size_bytes=0  # Could calculate if needed
+                    )
+
+                    print(f"Created project {project['project_id']} for user {user_id}")
+                except Exception as e:
+                    print(f"Warning: Failed to create project record: {e}")
+                    # Don't fail the job if project creation fails
         else:
             job.status = JobStatus.FAILED
             job.error = result.error
