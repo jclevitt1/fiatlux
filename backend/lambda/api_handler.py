@@ -233,6 +233,9 @@ def lambda_handler(event, context):
             return handle_delete_project(path_params.get('project_id'), user_id)
         elif route_key == 'GET /projects/{project_id}/files':
             return handle_project_files(path_params.get('project_id'), user_id)
+        elif route_key == 'GET /projects/{project_id}/download':
+            file_key = query_params.get('file_key', '')
+            return handle_download_file(path_params.get('project_id'), file_key, user_id)
         else:
             return response(404, {'error': f'Route not found: {route_key}'})
 
@@ -283,6 +286,10 @@ def lambda_handler(event, context):
     elif '/projects/' in path and '/files' in path and http_method == 'GET':
         project_id = path.split('/projects/')[1].split('/files')[0]
         return handle_project_files(project_id, user_id)
+    elif '/projects/' in path and '/download' in path and http_method == 'GET':
+        project_id = path.split('/projects/')[1].split('/download')[0]
+        file_key = query_params.get('file_key', '')
+        return handle_download_file(project_id, file_key, user_id)
     elif path.startswith('/projects/') and http_method == 'GET':
         project_id = path.split('/')[-1]
         return handle_get_project(project_id, user_id)
@@ -899,3 +906,41 @@ def handle_project_files(project_id: str, user_id: str):
         })
     except Exception as e:
         return response(500, {'detail': f'Failed to list project files: {e}'})
+
+
+def handle_download_file(project_id: str, file_key: str, user_id: str):
+    """Generate a presigned URL to download a file from a project."""
+    if not project_id:
+        return response(400, {'detail': 'project_id is required'})
+    if not file_key:
+        return response(400, {'detail': 'file_key is required'})
+
+    # Verify ownership
+    project = project_store.get_project(user_id, project_id)
+    if not project:
+        return response(404, {'detail': 'Project not found'})
+
+    # Build full S3 key if needed
+    s3_prefix = project.get('s3_prefix', f'{user_id}/project_files/{project_id}/')
+    if not file_key.startswith(user_id):
+        file_key = f"{s3_prefix}{file_key}"
+
+    try:
+        # Generate presigned URL (valid for 1 hour)
+        s3_client = boto3.client('s3')
+        presigned_url = s3_client.generate_presigned_url(
+            'get_object',
+            Params={
+                'Bucket': S3_BUCKET,
+                'Key': file_key
+            },
+            ExpiresIn=3600
+        )
+
+        return response(200, {
+            'download_url': presigned_url,
+            'file_key': file_key,
+            'expires_in': 3600
+        })
+    except Exception as e:
+        return response(500, {'detail': f'Failed to generate download URL: {e}'})

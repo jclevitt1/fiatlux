@@ -254,6 +254,12 @@ Resources:
             ApiId: !Ref HttpApi
             Path: /projects/{project_id}/files
             Method: GET
+        DownloadFile:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /projects/{project_id}/download
+            Method: GET
 
   # =============================================================================
   # Processor Lambda Function (Docker-based for poppler)
