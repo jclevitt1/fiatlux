@@ -87,22 +87,36 @@ def handle_s3_event(record: dict):
         print(f"Ignoring file outside project_notes/: {key}")
         return
 
-    # Extract user_id from path: {user_id}/project_notes/...
+    # Extract user_id and project_name from path
+    # Structure: {user_id}/project_notes/{project_name}/{filename}.pdf
+    # or: {user_id}/project_notes/{filename}.pdf (no project folder)
     path_parts = key.split('/')
     user_id = path_parts[0] if len(path_parts) >= 2 else "unknown"
-    print(f"Extracted user_id: {user_id}")
+
+    # Extract project name from folder structure
+    # If path has 4+ parts: user_id/project_notes/project_name/file.pdf
+    # If path has 3 parts: user_id/project_notes/file.pdf (use filename as project)
+    if len(path_parts) >= 4:
+        project_name = path_parts[2]  # The folder name is the project name
+    else:
+        # No folder - use filename (without .pdf) as project name
+        filename = path_parts[-1]
+        project_name = filename.rsplit('.', 1)[0] if '.' in filename else filename
+
+    print(f"Extracted user_id: {user_id}, project_name: {project_name}")
 
     # Default to EXECUTE job type (AI decides what to do)
     job_type = JobType.EXECUTE
 
-    # Create a job for this file
+    # Create a job for this file with project_name
     job = Job(
         id=str(uuid.uuid4()),
         job_type=job_type,
         status=JobStatus.PENDING,
         raw_file_path=key,
         additional_text='',
-        project_id=None  # Could extract from filename or metadata
+        project_id=None,
+        project_name=project_name
     )
 
     job_store.create_job(job, user_id=user_id)

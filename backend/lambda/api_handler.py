@@ -491,27 +491,29 @@ def handle_refresh(body: dict):
 
 def handle_upload(body: dict, user_id: str):
     """Upload a PDF to project_notes/ folder in S3, scoped to user."""
-    filename = body.get('filename') or body.get('path', '').split('/')[-1]  # Support both
+    # Get path - preserve folder structure (e.g., "ProjectName/note.pdf")
+    file_path = body.get('path') or body.get('filename', '')
     content_base64 = body.get('content_base64')
     mime_type = body.get('mime_type', 'application/pdf')
 
-    if not filename:
-        return response(400, {'detail': 'filename is required'})
+    if not file_path:
+        return response(400, {'detail': 'filename or path is required'})
     if not content_base64:
         return response(400, {'detail': 'content_base64 is required'})
-    if not filename.lower().endswith('.pdf'):
+    if not file_path.lower().endswith('.pdf'):
         return response(400, {'detail': 'Only PDF files are allowed'})
 
-    # Sanitize filename (replace spaces with underscores)
-    safe_filename = filename.replace(' ', '_')
+    # Sanitize path (replace spaces with underscores, preserve folder structure)
+    safe_path = file_path.replace(' ', '_')
 
     try:
         content = base64.b64decode(content_base64)
     except Exception as e:
         return response(400, {'detail': f'Invalid base64 content: {e}'})
 
-    # New structure: {user_id}/project_notes/{filename}.pdf
-    full_path = f"{user_id}/project_notes/{safe_filename}"
+    # New structure: {user_id}/project_notes/{project_folder}/{filename}.pdf
+    # or {user_id}/project_notes/{filename}.pdf if no folder
+    full_path = f"{user_id}/project_notes/{safe_path}"
 
     try:
         import asyncio
