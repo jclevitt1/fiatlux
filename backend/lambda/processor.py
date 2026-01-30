@@ -628,8 +628,16 @@ Generate complete, working code for all files. No placeholders or TODOs."""
                 print("[Execute] WARNING: Response was truncated due to max_tokens limit")
 
             # Parse JSON from response
-            json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
-            json_str = json_match.group(1) if json_match else response_text
+            # Use greedy match to get everything up to the LAST ``` (handles code blocks in content)
+            json_match = re.search(r'```json\s*([\s\S]*)\s*```', response_text)
+            if json_match:
+                json_str = json_match.group(1).strip()
+                # If there's trailing content after the JSON, trim to last }
+                last_brace = json_str.rfind('}')
+                if last_brace != -1:
+                    json_str = json_str[:last_brace + 1]
+            else:
+                json_str = response_text
             print(f"[Execute] JSON string length: {len(json_str)}")
 
             try:
