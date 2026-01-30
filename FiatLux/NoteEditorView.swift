@@ -516,9 +516,11 @@ struct NoteEditorView: View {
                 let uploadResponse = try await BackendService.shared.uploadPDF(data: pdfData, path: path)
 
                 // Step 2: Execute (AI decides what to do)
+                // Use parent project name, or fall back to note title
+                let projectName = parentProjectName ?? executeTitle
                 let executeResponse = try await BackendService.shared.execute(
                     filePath: uploadResponse.path,
-                    projectName: parentProjectName
+                    projectName: projectName
                 )
 
                 // Step 3: Wait for completion (with timeout)
