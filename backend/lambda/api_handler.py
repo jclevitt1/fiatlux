@@ -709,8 +709,8 @@ def handle_list_projects(search: Optional[str], user_id: str):
                     'description': p.get('description', ''),
                     'language': p.get('language', ''),
                     'framework': p.get('framework', ''),
-                    'file_count': p.get('file_count', 0),
-                    'total_size_bytes': p.get('total_size_bytes', 0),
+                    'file_count': int(p.get('file_count', 0)),  # Convert Decimal to int
+                    'total_size_bytes': int(p.get('total_size_bytes', 0)),  # Convert Decimal to int
                     's3_uri': p.get('s3_uri', ''),
                     'created_at': p.get('created_at'),
                     'updated_at': p.get('updated_at')
@@ -749,8 +749,8 @@ def handle_get_project(project_id: str, user_id: str):
             'description': project.get('description', ''),
             'language': project.get('language', ''),
             'framework': project.get('framework', ''),
-            'file_count': project.get('file_count', 0),
-            'total_size_bytes': project.get('total_size_bytes', 0),
+            'file_count': int(project.get('file_count', 0)),  # Convert Decimal
+            'total_size_bytes': int(project.get('total_size_bytes', 0)),  # Convert Decimal
             's3_uri': project.get('s3_uri', ''),
             's3_prefix': project.get('s3_prefix', ''),
             'source_job_id': project.get('source_job_id'),
