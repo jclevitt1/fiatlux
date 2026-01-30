@@ -620,6 +620,8 @@ Generate complete, working code for all files. No placeholders or TODOs."""
                 stop_reason = final_message.stop_reason
 
             print(f"[Execute] Response length: {len(response_text)}, stop_reason: {stop_reason}")
+            print(f"[Execute] Response preview (first 500): {response_text[:500]}")
+            print(f"[Execute] Response end (last 500): {response_text[-500:]}")
 
             # Check if response was truncated
             if stop_reason == "max_tokens":
@@ -628,12 +630,13 @@ Generate complete, working code for all files. No placeholders or TODOs."""
             # Parse JSON from response
             json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
             json_str = json_match.group(1) if json_match else response_text
+            print(f"[Execute] JSON string length: {len(json_str)}")
 
             try:
                 project_spec = json.loads(json_str)
             except json.JSONDecodeError as e:
                 print(f"[Execute] JSON parse error: {e}")
-                print(f"[Execute] JSON string (last 500 chars): ...{json_str[-500:]}")
+                print(f"[Execute] FULL JSON string:\n{json_str}")
                 # If truncated, try to salvage what we can
                 if stop_reason == "max_tokens":
                     raise ValueError(f"Response truncated - increase max_tokens or simplify request. JSON error: {e}")
