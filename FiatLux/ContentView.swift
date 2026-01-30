@@ -259,7 +259,7 @@ struct ProjectView: View {
         .navigationDestination(for: NotesItem.self) { item in
             switch item {
             case .note(let note):
-                NoteEditorView(note: note, store: store)
+                NoteEditorView(note: note, store: store, parentProject: currentProject)
             case .project(let subproject):
                 ProjectView(project: subproject, store: store)
             }
