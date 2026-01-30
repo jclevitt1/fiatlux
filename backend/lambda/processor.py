@@ -606,18 +606,32 @@ Generate complete, working code for all files. No placeholders or TODOs."""
 
             message = self.client.messages.create(
                 model="claude-sonnet-4-20250514",
-                max_tokens=8192,
+                max_tokens=64000,  # Model maximum - no artificial limit
                 messages=[{"role": "user", "content": content}]
             )
 
             response_text = message.content[0].text
+            stop_reason = message.stop_reason
+
+            print(f"[Execute] Response length: {len(response_text)}, stop_reason: {stop_reason}")
+
+            # Check if response was truncated
+            if stop_reason == "max_tokens":
+                print("[Execute] WARNING: Response was truncated due to max_tokens limit")
 
             # Parse JSON from response
             json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
-            if json_match:
-                project_spec = json.loads(json_match.group(1))
-            else:
-                project_spec = json.loads(response_text)
+            json_str = json_match.group(1) if json_match else response_text
+
+            try:
+                project_spec = json.loads(json_str)
+            except json.JSONDecodeError as e:
+                print(f"[Execute] JSON parse error: {e}")
+                print(f"[Execute] JSON string (last 500 chars): ...{json_str[-500:]}")
+                # If truncated, try to salvage what we can
+                if stop_reason == "max_tokens":
+                    raise ValueError(f"Response truncated - increase max_tokens or simplify request. JSON error: {e}")
+                raise
 
             # Write files to S3
             files_created = []
