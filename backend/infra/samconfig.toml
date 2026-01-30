@@ -1,0 +1,28 @@
+# SAM CLI configuration for FiatLux backend
+# Run: sam deploy --config-file infra/samconfig.toml
+
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "fiatlux-backend"
+region = "us-west-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
+image_repositories = []
+
+[default.build.parameters]
+use_container = true
+
+[dev.deploy.parameters]
+stack_name = "fiatlux-backend-dev"
+region = "us-west-1"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
+parameter_overrides = "Stage=dev"
+
+[prod.deploy.parameters]
+stack_name = "fiatlux-backend-prod"
+region = "us-west-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM CAPABILITY_AUTO_EXPAND"
+parameter_overrides = "Stage=prod"

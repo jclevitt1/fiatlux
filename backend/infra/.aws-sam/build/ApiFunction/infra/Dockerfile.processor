@@ -1,0 +1,22 @@
+# FiatLux Processor Lambda - Docker image with poppler for PDF processing
+#
+# Uses AWS Lambda Python base image with poppler-utils installed
+
+FROM public.ecr.aws/lambda/python:3.11
+
+# Install poppler-utils for PDF to image conversion
+RUN yum install -y poppler-utils && yum clean all
+
+# Copy requirements first for caching
+COPY lambda/requirements.txt ${LAMBDA_TASK_ROOT}/requirements.txt
+RUN pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements.txt
+
+# Copy application code
+COPY models/ ${LAMBDA_TASK_ROOT}/models/
+COPY storage/ ${LAMBDA_TASK_ROOT}/storage/
+COPY agents/ ${LAMBDA_TASK_ROOT}/agents/
+COPY utils/ ${LAMBDA_TASK_ROOT}/utils/
+COPY lambda/ ${LAMBDA_TASK_ROOT}/lambda/
+
+# Set the handler
+CMD ["lambda.processor.lambda_handler"]

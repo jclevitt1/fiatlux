@@ -1,0 +1,346 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: FiatLux Backend - Serverless infrastructure for note processing
+Parameters:
+  Stage:
+    Type: String
+    Default: dev
+    AllowedValues:
+    - dev
+    - prod
+    Description: Deployment stage
+  AnthropicApiKey:
+    Type: String
+    NoEcho: true
+    Description: Anthropic API key for Claude
+  ClerkPublishableKey:
+    Type: String
+    Description: Clerk publishable key for JWT verification
+  ClerkSecretKey:
+    Type: String
+    NoEcho: true
+    Description: Clerk secret key
+Globals:
+  Function:
+    Timeout: 300
+    MemorySize: 1024
+    Environment:
+      Variables:
+        S3_BUCKET:
+          Fn::Sub: fiatlux-storage-${Stage}-${AWS::AccountId}
+        JOBS_TABLE:
+          Fn::Sub: fiatlux-jobs-${Stage}
+        PROJECTS_TABLE:
+          Fn::Sub: fiatlux-projects-${Stage}
+        ANTHROPIC_API_KEY:
+          Ref: AnthropicApiKey
+        CLERK_PUBLISHABLE_KEY:
+          Ref: ClerkPublishableKey
+        CLERK_SECRET_KEY:
+          Ref: ClerkSecretKey
+Resources:
+  StorageBucket:
+    Type: AWS::S3::Bucket
+    DependsOn: ProcessorS3Permission
+    Properties:
+      BucketName:
+        Fn::Sub: fiatlux-storage-${Stage}-${AWS::AccountId}
+      CorsConfiguration:
+        CorsRules:
+        - AllowedHeaders:
+          - '*'
+          AllowedMethods:
+          - GET
+          - PUT
+          - POST
+          AllowedOrigins:
+          - '*'
+          MaxAge: 3600
+      NotificationConfiguration:
+        LambdaConfigurations:
+        - Event: s3:ObjectCreated:*
+          Filter:
+            S3Key:
+              Rules:
+              - Name: suffix
+                Value: .pdf
+          Function:
+            Fn::GetAtt:
+            - ProcessorFunction
+            - Arn
+  ProcessorS3Permission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName:
+        Ref: ProcessorFunction
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn:
+        Fn::Sub: arn:aws:s3:::fiatlux-storage-${Stage}-${AWS::AccountId}
+      SourceAccount:
+        Ref: AWS::AccountId
+  JobsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName:
+        Fn::Sub: fiatlux-jobs-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: job_id
+        AttributeType: S
+      - AttributeName: user_id
+        AttributeType: S
+      - AttributeName: created_at
+        AttributeType: S
+      KeySchema:
+      - AttributeName: job_id
+        KeyType: HASH
+      GlobalSecondaryIndexes:
+      - IndexName: user-jobs-index
+        KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+        - AttributeName: created_at
+          KeyType: RANGE
+        Projection:
+          ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+  ProjectsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName:
+        Fn::Sub: fiatlux-projects-${Stage}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: user_id
+        AttributeType: S
+      - AttributeName: project_id
+        AttributeType: S
+      - AttributeName: updated_at
+        AttributeType: S
+      KeySchema:
+      - AttributeName: user_id
+        KeyType: HASH
+      - AttributeName: project_id
+        KeyType: RANGE
+      GlobalSecondaryIndexes:
+      - IndexName: project-lookup-index
+        KeySchema:
+        - AttributeName: project_id
+          KeyType: HASH
+        Projection:
+          ProjectionType: ALL
+      - IndexName: user-recent-index
+        KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+        - AttributeName: updated_at
+          KeyType: RANGE
+        Projection:
+          ProjectionType: ALL
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: fiatlux-api-${Stage}
+      Runtime: python3.11
+      CodeUri: ApiFunction
+      Handler: lambda.api_handler.lambda_handler
+      Description: FiatLux API endpoints
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: JobsTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: ProjectsTable
+      - S3CrudPolicy:
+          BucketName:
+            Fn::Sub: fiatlux-storage-${Stage}-${AWS::AccountId}
+      Events:
+        Health:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /health
+            Method: GET
+        SignIn:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /auth/signin
+            Method: POST
+        AuthRefresh:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /auth/refresh
+            Method: POST
+        Upload:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /upload
+            Method: POST
+        SubmitJob:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /jobs
+            Method: POST
+        GetJob:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /jobs/{job_id}
+            Method: GET
+        ListJobs:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /jobs
+            Method: GET
+        Execute:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /execute
+            Method: POST
+        ListProjects:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /projects
+            Method: GET
+        GetProject:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /projects/{project_id}
+            Method: GET
+        CreateProject:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /projects
+            Method: POST
+        UpdateProject:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /projects/{project_id}
+            Method: PUT
+        DeleteProject:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /projects/{project_id}
+            Method: DELETE
+        ProjectFiles:
+          Type: HttpApi
+          Properties:
+            ApiId:
+              Ref: HttpApi
+            Path: /projects/{project_id}/files
+            Method: GET
+    Metadata:
+      SamResourceId: ApiFunction
+  ProcessorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName:
+        Fn::Sub: fiatlux-processor-${Stage}
+      PackageType: Image
+      ImageUri: processorfunction:latest
+      Description: FiatLux PDF processor with Claude
+      Timeout: 900
+      MemorySize: 2048
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: JobsTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: ProjectsTable
+      - S3CrudPolicy:
+          BucketName:
+            Fn::Sub: fiatlux-storage-${Stage}-${AWS::AccountId}
+    Metadata:
+      DockerContext: /Users/jeremylevitt/Desktop/FiatLux/backend
+      DockerTag: latest
+      Dockerfile: infra/Dockerfile.processor
+      SamResourceId: ProcessorFunction
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName:
+        Ref: Stage
+      CorsConfiguration:
+        AllowOrigins:
+        - '*'
+        AllowHeaders:
+        - Content-Type
+        - X-Api-Key
+        - Authorization
+        AllowMethods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+Outputs:
+  ApiUrl:
+    Description: API Gateway endpoint URL
+    Value:
+      Fn::Sub: https://${HttpApi}.execute-api.us-west-1.amazonaws.com/${Stage}
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-ApiUrl
+  StorageBucketName:
+    Description: S3 bucket name for storage
+    Value:
+      Ref: StorageBucket
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-StorageBucket
+  JobsTableName:
+    Description: DynamoDB table name for jobs
+    Value:
+      Ref: JobsTable
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-JobsTable
+  ProjectsTableName:
+    Description: DynamoDB table name for projects
+    Value:
+      Ref: ProjectsTable
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-ProjectsTable
+  ApiFunctionArn:
+    Description: API Lambda function ARN
+    Value:
+      Fn::GetAtt:
+      - ApiFunction
+      - Arn
+  ProcessorFunctionArn:
+    Description: Processor Lambda function ARN
+    Value:
+      Fn::GetAtt:
+      - ProcessorFunction
+      - Arn
