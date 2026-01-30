@@ -24,24 +24,24 @@ class NotesStore {
         save()
     }
 
-    func addNote(_ note: Note, toFolderWithId folderId: UUID) {
-        if addNoteToFolder(note, folderId: folderId, in: &items) {
+    func addNote(_ note: Note, toProjectWithId projectId: UUID) {
+        if addNoteToProject(note, projectId: projectId, in: &items) {
             save()
         }
     }
 
-    private func addNoteToFolder(_ note: Note, folderId: UUID, in items: inout [NotesItem]) -> Bool {
+    private func addNoteToProject(_ note: Note, projectId: UUID, in items: inout [NotesItem]) -> Bool {
         for (index, item) in items.enumerated() {
-            if case .folder(var folder) = item {
-                if folder.id == folderId {
-                    folder.items.insert(.note(note), at: 0)
-                    folder.updatedAt = Date()
-                    items[index] = .folder(folder)
+            if case .project(var project) = item {
+                if project.id == projectId {
+                    project.items.insert(.note(note), at: 0)
+                    project.updatedAt = Date()
+                    items[index] = .project(project)
                     return true
                 }
-                if addNoteToFolder(note, folderId: folderId, in: &folder.items) {
-                    folder.updatedAt = Date()
-                    items[index] = .folder(folder)
+                if addNoteToProject(note, projectId: projectId, in: &project.items) {
+                    project.updatedAt = Date()
+                    items[index] = .project(project)
                     return true
                 }
             }
@@ -49,8 +49,8 @@ class NotesStore {
         return false
     }
 
-    func addFolder(_ folder: Folder) {
-        items.insert(.folder(folder), at: 0)
+    func addProject(_ project: Project) {
+        items.insert(.project(project), at: 0)
         save()
     }
 
@@ -65,37 +65,37 @@ class NotesStore {
         }
     }
 
-    func updateFolder(_ folder: Folder) {
+    func updateProject(_ project: Project) {
         // Try to update at root level first
-        if let index = items.firstIndex(where: { $0.id == folder.id }) {
-            var updated = folder
+        if let index = items.firstIndex(where: { $0.id == project.id }) {
+            var updated = project
             updated.updatedAt = Date()
-            items[index] = .folder(updated)
+            items[index] = .project(updated)
             save()
             return
         }
         // Otherwise search recursively
-        if updateFolderRecursively(folder, in: &items) {
+        if updateProjectRecursively(project, in: &items) {
             save()
         }
     }
 
-    private func updateFolderRecursively(_ folder: Folder, in items: inout [NotesItem]) -> Bool {
+    private func updateProjectRecursively(_ project: Project, in items: inout [NotesItem]) -> Bool {
         for (index, item) in items.enumerated() {
-            if case .folder(var parentFolder) = item {
-                // Check if this folder contains the target
-                if let childIndex = parentFolder.items.firstIndex(where: { $0.id == folder.id }) {
-                    var updated = folder
+            if case .project(var parentProject) = item {
+                // Check if this project contains the target
+                if let childIndex = parentProject.items.firstIndex(where: { $0.id == project.id }) {
+                    var updated = project
                     updated.updatedAt = Date()
-                    parentFolder.items[childIndex] = .folder(updated)
-                    parentFolder.updatedAt = Date()
-                    items[index] = .folder(parentFolder)
+                    parentProject.items[childIndex] = .project(updated)
+                    parentProject.updatedAt = Date()
+                    items[index] = .project(parentProject)
                     return true
                 }
                 // Recurse deeper
-                if updateFolderRecursively(folder, in: &parentFolder.items) {
-                    parentFolder.updatedAt = Date()
-                    items[index] = .folder(parentFolder)
+                if updateProjectRecursively(project, in: &parentProject.items) {
+                    parentProject.updatedAt = Date()
+                    items[index] = .project(parentProject)
                     return true
                 }
             }
@@ -122,14 +122,14 @@ class NotesStore {
             switch item {
             case .note(let note):
                 if note.id == id { return index }
-            case .folder(var folder):
-                if let nestedIndex = findNoteIndex(id, in: &folder.items) {
-                    var updatedFolder = folder
-                    if case .note(var note) = folder.items[nestedIndex] {
+            case .project(var project):
+                if let nestedIndex = findNoteIndex(id, in: &project.items) {
+                    var updatedProject = project
+                    if case .note(var note) = project.items[nestedIndex] {
                         note.updatedAt = Date()
-                        updatedFolder.items[nestedIndex] = .note(note)
-                        updatedFolder.updatedAt = Date()
-                        items[index] = .folder(updatedFolder)
+                        updatedProject.items[nestedIndex] = .note(note)
+                        updatedProject.updatedAt = Date()
+                        items[index] = .project(updatedProject)
                     }
                     return nil // Handled in nested
                 }
@@ -151,10 +151,10 @@ class NotesStore {
                     items[index] = .note(note)
                     return true
                 }
-            case .folder(var folder):
-                if updateNoteRecursively(note, in: &folder.items) {
-                    folder.updatedAt = Date()
-                    items[index] = .folder(folder)
+            case .project(var project):
+                if updateNoteRecursively(note, in: &project.items) {
+                    project.updatedAt = Date()
+                    items[index] = .project(project)
                     return true
                 }
             }

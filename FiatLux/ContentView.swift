@@ -12,11 +12,13 @@ import PencilKit
 #endif
 
 struct ContentView: View {
+    @Environment(AuthManager.self) private var authManager
     @State private var store = NotesStore()
     @State private var isCreatingNote = false
     @State private var showingAddMenu = false
-    @State private var folderName = ""
-    @State private var showingFolderAlert = false
+    @State private var projectName = ""
+    @State private var showingProjectAlert = false
+    @State private var showingUserMenu = false
 
     var body: some View {
         NavigationStack {
@@ -25,7 +27,7 @@ struct ContentView: View {
                     ContentUnavailableView(
                         "No Notes",
                         systemImage: "note.text",
-                        description: Text("Tap + to create your first note or folder")
+                        description: Text("Tap + to create your first note or project")
                     )
                 } else {
                     List {
@@ -35,9 +37,9 @@ struct ContentView: View {
                                 NavigationLink(value: item) {
                                     NoteRowView(note: note)
                                 }
-                            case .folder(let folder):
+                            case .project(let project):
                                 NavigationLink(value: item) {
-                                    FolderRowView(folder: folder)
+                                    ProjectRowView(project: project)
                                 }
                             }
                         }
@@ -47,6 +49,39 @@ struct ContentView: View {
             }
             .navigationTitle("Notes")
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Menu {
+                        if let user = authManager.currentUser {
+                            Text(user.displayName)
+                                .font(.headline)
+                            Text(user.email)
+                                .font(.caption)
+
+                            Divider()
+                        }
+
+                        Button(role: .destructive) {
+                            authManager.signOut()
+                        } label: {
+                            Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                        }
+                    } label: {
+                        if let user = authManager.currentUser {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.blue.opacity(0.2))
+                                    .frame(width: 32, height: 32)
+                                Text(user.initials)
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.blue)
+                            }
+                        } else {
+                            Image(systemName: "person.circle")
+                        }
+                    }
+                }
+
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button {
@@ -56,10 +91,10 @@ struct ContentView: View {
                         }
 
                         Button {
-                            folderName = ""
-                            showingFolderAlert = true
+                            projectName = ""
+                            showingProjectAlert = true
                         } label: {
-                            Label("New Folder", systemImage: "folder.badge.plus")
+                            Label("New Project", systemImage: "folder.badge.plus")
                         }
                     } label: {
                         Image(systemName: "plus")
@@ -70,49 +105,49 @@ struct ContentView: View {
                 switch item {
                 case .note(let note):
                     NoteEditorView(note: note, store: store)
-                case .folder(let folder):
-                    FolderView(folder: folder, store: store)
+                case .project(let project):
+                    ProjectView(project: project, store: store)
                 }
             }
             .navigationDestination(isPresented: $isCreatingNote) {
                 NoteEditorView(store: store)
             }
-            .alert("New Folder", isPresented: $showingFolderAlert) {
-                TextField("Folder name", text: $folderName)
+            .alert("New Project", isPresented: $showingProjectAlert) {
+                TextField("Project name", text: $projectName)
                 Button("Cancel", role: .cancel) { }
                 Button("Create") {
-                    if !folderName.isEmpty {
-                        store.addFolder(Folder(name: folderName))
+                    if !projectName.isEmpty {
+                        store.addProject(Project(name: projectName))
                     }
                 }
             } message: {
-                Text("Enter a name for the new folder")
+                Text("Enter a name for the new project")
             }
         }
     }
 }
 
-struct FolderRowView: View {
-    let folder: Folder
+struct ProjectRowView: View {
+    let project: Project
 
     var body: some View {
         HStack(spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.blue.opacity(0.1))
+                    .fill(Color.purple.opacity(0.1))
                     .frame(width: 60, height: 60)
                 Image(systemName: "folder.fill")
                     .font(.title)
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(.purple)
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(folder.name)
+                Text(project.name)
                     .font(.headline)
-                Text("\(folder.items.count) item\(folder.items.count == 1 ? "" : "s")")
+                Text("\(project.items.count) item\(project.items.count == 1 ? "" : "s")")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text(folder.updatedAt.formatted(date: .abbreviated, time: .shortened))
+                Text(project.updatedAt.formatted(date: .abbreviated, time: .shortened))
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
@@ -121,32 +156,32 @@ struct FolderRowView: View {
     }
 }
 
-struct FolderView: View {
-    let folderId: UUID
-    let initialFolder: Folder
+struct ProjectView: View {
+    let projectId: UUID
+    let initialProject: Project
     var store: NotesStore
 
     @State private var isCreatingNote = false
-    @State private var folderName = ""
-    @State private var showingFolderAlert = false
+    @State private var projectName = ""
+    @State private var showingProjectAlert = false
 
-    init(folder: Folder, store: NotesStore) {
-        self.folderId = folder.id
-        self.initialFolder = folder
+    init(project: Project, store: NotesStore) {
+        self.projectId = project.id
+        self.initialProject = project
         self.store = store
     }
 
-    // Find the current folder from store (refreshes on changes)
-    private var currentFolder: Folder {
-        findFolder(id: folderId, in: store.items) ?? initialFolder
+    // Find the current project from store (refreshes on changes)
+    private var currentProject: Project {
+        findProject(id: projectId, in: store.items) ?? initialProject
     }
 
-    private func findFolder(id: UUID, in items: [NotesItem]) -> Folder? {
+    private func findProject(id: UUID, in items: [NotesItem]) -> Project? {
         for item in items {
             switch item {
-            case .folder(let folder):
-                if folder.id == id { return folder }
-                if let found = findFolder(id: id, in: folder.items) { return found }
+            case .project(let project):
+                if project.id == id { return project }
+                if let found = findProject(id: id, in: project.items) { return found }
             case .note:
                 continue
             }
@@ -156,31 +191,51 @@ struct FolderView: View {
 
     var body: some View {
         Group {
-            if currentFolder.items.isEmpty {
-                ContentUnavailableView(
-                    "Empty Folder",
-                    systemImage: "folder",
-                    description: Text("Tap + to add notes or folders")
-                )
+            if currentProject.items.isEmpty {
+                VStack(spacing: 20) {
+                    // Check Project Files link (placeholder)
+                    if currentProject.cloudProjectId != nil {
+                        checkProjectFilesLink
+                    }
+
+                    Spacer()
+
+                    ContentUnavailableView(
+                        "Empty Project",
+                        systemImage: "folder",
+                        description: Text("Tap + to add notes")
+                    )
+
+                    Spacer()
+                }
             } else {
                 List {
-                    ForEach(currentFolder.items) { item in
-                        switch item {
-                        case .note(let note):
-                            NavigationLink(value: item) {
-                                NoteRowView(note: note)
-                            }
-                        case .folder(let subfolder):
-                            NavigationLink(value: item) {
-                                FolderRowView(folder: subfolder)
-                            }
+                    // Check Project Files link at top
+                    if currentProject.cloudProjectId != nil {
+                        Section {
+                            checkProjectFilesLink
                         }
                     }
-                    .onDelete(perform: deleteItems)
+
+                    Section {
+                        ForEach(currentProject.items) { item in
+                            switch item {
+                            case .note(let note):
+                                NavigationLink(value: item) {
+                                    NoteRowView(note: note)
+                                }
+                            case .project(let subproject):
+                                NavigationLink(value: item) {
+                                    ProjectRowView(project: subproject)
+                                }
+                            }
+                        }
+                        .onDelete(perform: deleteItems)
+                    }
                 }
             }
         }
-        .navigationTitle(currentFolder.name)
+        .navigationTitle(currentProject.name)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -191,10 +246,10 @@ struct FolderView: View {
                     }
 
                     Button {
-                        folderName = ""
-                        showingFolderAlert = true
+                        projectName = ""
+                        showingProjectAlert = true
                     } label: {
-                        Label("New Folder", systemImage: "folder.badge.plus")
+                        Label("New Sub-Project", systemImage: "folder.badge.plus")
                     }
                 } label: {
                     Image(systemName: "plus")
@@ -205,32 +260,54 @@ struct FolderView: View {
             switch item {
             case .note(let note):
                 NoteEditorView(note: note, store: store)
-            case .folder(let subfolder):
-                FolderView(folder: subfolder, store: store)
+            case .project(let subproject):
+                ProjectView(project: subproject, store: store)
             }
         }
         .navigationDestination(isPresented: $isCreatingNote) {
-            NoteEditorView(store: store, parentFolder: currentFolder)
+            NoteEditorView(store: store, parentProject: currentProject)
         }
-        .alert("New Folder", isPresented: $showingFolderAlert) {
-            TextField("Folder name", text: $folderName)
+        .alert("New Sub-Project", isPresented: $showingProjectAlert) {
+            TextField("Project name", text: $projectName)
             Button("Cancel", role: .cancel) { }
             Button("Create") {
-                if !folderName.isEmpty {
-                    var updated = currentFolder
-                    updated.items.insert(.folder(Folder(name: folderName)), at: 0)
-                    store.updateFolder(updated)
+                if !projectName.isEmpty {
+                    var updated = currentProject
+                    updated.items.insert(.project(Project(name: projectName)), at: 0)
+                    store.updateProject(updated)
                 }
             }
         } message: {
-            Text("Enter a name for the new folder")
+            Text("Enter a name for the new sub-project")
         }
     }
 
+    private var checkProjectFilesLink: some View {
+        Button {
+            // TODO: Navigate to project files viewer
+        } label: {
+            HStack {
+                Image(systemName: "folder.circle")
+                    .foregroundStyle(.blue)
+                Text("Check Project Files")
+                    .foregroundStyle(.primary)
+                Spacer()
+                Text("Coming Soon")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+    }
+
     private func deleteItems(at offsets: IndexSet) {
-        var updated = currentFolder
+        var updated = currentProject
         updated.items.remove(atOffsets: offsets)
-        store.updateFolder(updated)
+        store.updateProject(updated)
     }
 }
 
@@ -258,7 +335,7 @@ struct NoteRowView: View {
             #endif
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(note.title)
+                Text(note.title.isEmpty ? "Untitled" : note.title)
                     .font(.headline)
                 Text(note.updatedAt.formatted(date: .abbreviated, time: .shortened))
                     .font(.caption)
@@ -281,4 +358,5 @@ struct NoteRowView: View {
 
 #Preview {
     ContentView()
+        .environment(AuthManager.shared)
 }

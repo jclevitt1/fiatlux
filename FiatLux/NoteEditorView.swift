@@ -21,14 +21,13 @@ struct NoteEditorView: View {
 
     var note: Note?
     var store: NotesStore
-    var parentFolderId: UUID?
+    var parentProjectId: UUID?
+    var parentProjectName: String?
 
     @State private var title: String = ""
     @State private var pages: [PageData] = [PageData()]
     @State private var noteId: UUID
     @State private var currentTool: DrawingTool = .pencil
-    @State private var currentMode: NoteMode = .notes
-    @State private var showingModeMenu: Bool = false
     @State private var exportMessage: String? = nil
     @State private var showingExportAlert: Bool = false
     @State private var currentPageIndex: Int = 0
@@ -36,9 +35,10 @@ struct NoteEditorView: View {
     @State private var isBackingUp: Bool = false
     @State private var backupMessage: String? = nil
     @State private var showingBackupAlert: Bool = false
-    @State private var showingProjectBrowser: Bool = false
-    @State private var selectedProjectId: String? = nil
-    @State private var selectedProjectName: String? = nil
+    @State private var showingExecuteConfirm: Bool = false
+    @State private var isExecuting: Bool = false
+    @State private var executeMessage: String? = nil
+    @State private var showingExecuteResult: Bool = false
 
     #if os(iOS)
     @State private var canvasView = PKCanvasView()
@@ -48,16 +48,14 @@ struct NoteEditorView: View {
     // 8.5 x 11 ratio (11/8.5 = 1.294)
     private let pageAspectRatio: CGFloat = 11.0 / 8.5
 
-    init(note: Note? = nil, store: NotesStore, parentFolder: Folder? = nil) {
+    init(note: Note? = nil, store: NotesStore, parentProject: Project? = nil) {
         self.note = note
         self.store = store
-        self.parentFolderId = parentFolder?.id
+        self.parentProjectId = parentProject?.id
+        self.parentProjectName = parentProject?.name
         _title = State(initialValue: note?.title ?? "")
         _pages = State(initialValue: note?.pages ?? [PageData()])
         _noteId = State(initialValue: note?.id ?? UUID())
-        _currentMode = State(initialValue: note?.mode ?? .notes)
-        _selectedProjectId = State(initialValue: note?.selectedProjectId)
-        _selectedProjectName = State(initialValue: note?.selectedProjectName)
     }
 
     var body: some View {
@@ -69,6 +67,59 @@ struct NoteEditorView: View {
                     #if os(macOS)
                     .textFieldStyle(.plain)
                     #endif
+
+                // Execute button (main action)
+                Button {
+                    showingExecuteConfirm = true
+                } label: {
+                    if isExecuting {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Processing...")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.purple.opacity(0.15))
+                        .foregroundColor(.purple)
+                        .cornerRadius(8)
+                    } else {
+                        HStack(spacing: 6) {
+                            Image(systemName: "play.fill")
+                                .font(.body)
+                            Text("Execute")
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.purple)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                    }
+                }
+                .buttonStyle(.plain)
+                .help("Upload and process with Claude")
+                .disabled(isExecuting)
+
+                // Upload only button (secondary)
+                Button {
+                    backupToCloud()
+                } label: {
+                    if isBackingUp {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "icloud.and.arrow.up")
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .help("Upload only (no processing)")
+                .disabled(isBackingUp || isExecuting)
 
                 Spacer()
 
@@ -150,22 +201,6 @@ struct NoteEditorView: View {
                     .help("Export as PDF")
 
                     Button {
-                        backupToGoogleDrive()
-                    } label: {
-                        if isBackingUp {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Image(systemName: "icloud.and.arrow.up")
-                                .font(.title2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .help("Backup to Google Drive")
-                    .disabled(isBackingUp)
-
-                    Button {
                         showingPageSettings.toggle()
                     } label: {
                         Image(systemName: pages[currentPageIndex].orientation.icon)
@@ -205,108 +240,6 @@ struct NoteEditorView: View {
                         .frame(width: 200)
                     }
                 }
-
-                Spacer()
-                    .frame(width: 24)
-
-                // Mode selector
-                Button {
-                    showingModeMenu.toggle()
-                } label: {
-                    VStack(spacing: 2) {
-                        ZStack {
-                            Circle()
-                                .fill(currentMode.color.opacity(0.2))
-                                .frame(width: 36, height: 36)
-                            Image(systemName: currentMode.icon)
-                                .font(.system(size: 16))
-                                .foregroundStyle(currentMode.color)
-                        }
-                        Text(currentMode.rawValue)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .buttonStyle(.plain)
-                .popover(isPresented: $showingModeMenu, arrowEdge: .top) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(NoteMode.allCases, id: \.self) { mode in
-                            Button {
-                                currentMode = mode
-                                showingModeMenu = false
-                            } label: {
-                                HStack(spacing: 12) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(mode.color.opacity(0.2))
-                                            .frame(width: 32, height: 32)
-                                        Image(systemName: mode.icon)
-                                            .font(.system(size: 14))
-                                            .foregroundStyle(mode.color)
-                                    }
-
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(mode.rawValue)
-                                            .font(.subheadline)
-                                            .fontWeight(.medium)
-                                        Text(modeDescription(mode))
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-
-                                    Spacer()
-
-                                    if mode == currentMode {
-                                        Image(systemName: "checkmark")
-                                            .foregroundStyle(.blue)
-                                    }
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 10)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-
-                            if mode != NoteMode.allCases.last {
-                                Divider()
-                            }
-                        }
-                    }
-                    .frame(width: 240)
-                    .padding(.vertical, 8)
-                }
-
-                // Project selector (only shown for Existing Project mode)
-                if currentMode == .existingProject {
-                    Spacer()
-                        .frame(width: 16)
-
-                    Button {
-                        showingProjectBrowser = true
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: selectedProjectId != nil ? "folder.fill" : "folder.badge.plus")
-                                .font(.system(size: 14))
-                            Text(selectedProjectName ?? "Select Project")
-                                .font(.caption)
-                                .lineLimit(1)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(selectedProjectId != nil ? Color.orange.opacity(0.2) : Color.secondary.opacity(0.1))
-                        )
-                        .foregroundStyle(selectedProjectId != nil ? .orange : .secondary)
-                    }
-                    .buttonStyle(.plain)
-                    .popover(isPresented: $showingProjectBrowser) {
-                        ProjectBrowserView { project in
-                            selectedProjectId = project.project_id
-                            selectedProjectName = project.name
-                        }
-                    }
-                }
             }
             .padding()
 
@@ -314,12 +247,32 @@ struct NoteEditorView: View {
 
             // Multi-page notebook
             #if os(iOS)
-            CanvasView(canvasView: $canvasView, toolPicker: $toolPicker, currentTool: $currentTool)
-                .onAppear {
-                    if let note = note {
-                        canvasView.drawing = note.drawing
+            ZStack(alignment: .topTrailing) {
+                CanvasView(canvasView: $canvasView, toolPicker: $toolPicker, currentTool: $currentTool)
+                    .onAppear {
+                        if let note = note {
+                            canvasView.drawing = note.drawing
+                        }
                     }
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 4)
+                            .stroke(Color.gray.opacity(0.4), lineWidth: 2)
+                    )
+
+                // Orientation indicator badge
+                HStack(spacing: 4) {
+                    Image(systemName: pages[currentPageIndex].orientation == .portrait ? "rectangle.portrait.fill" : "rectangle.fill")
+                        .font(.caption2)
+                    Text(pages[currentPageIndex].orientation == .portrait ? "Portrait" : "Landscape")
+                        .font(.caption2)
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.black.opacity(0.6))
+                .foregroundColor(.white)
+                .cornerRadius(4)
+                .padding(12)
+            }
             #else
             GeometryReader { geometry in
                 let availableWidth = geometry.size.width - 40  // padding
@@ -375,6 +328,26 @@ struct NoteEditorView: View {
         } message: {
             Text(backupMessage ?? "")
         }
+        .alert("Execute?", isPresented: $showingExecuteConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Execute") {
+                executeNote()
+            }
+        } message: {
+            Text(executeConfirmMessage)
+        }
+        .alert("Execution Result", isPresented: $showingExecuteResult) {
+            Button("OK") { }
+        } message: {
+            Text(executeMessage ?? "")
+        }
+    }
+
+    private var executeConfirmMessage: String {
+        if let projectName = parentProjectName {
+            return "This will upload your notes to the project '\(projectName)' and process them with Claude AI."
+        }
+        return "This will upload your notes and process them with Claude AI."
     }
 
     private func save() {
@@ -393,33 +366,19 @@ struct NoteEditorView: View {
             id: noteId,
             title: title.isEmpty ? "Untitled" : title,
             pages: savedPages,
-            mode: currentMode,
             createdAt: note?.createdAt ?? Date(),
-            updatedAt: Date(),
-            selectedProjectId: currentMode == .existingProject ? selectedProjectId : nil,
-            selectedProjectName: currentMode == .existingProject ? selectedProjectName : nil
+            updatedAt: Date()
         )
 
         if note != nil {
             // Updating existing note
             store.updateNoteInPlace(savedNote)
-        } else if let folderId = parentFolderId {
-            // Adding to a folder (works for any nesting depth)
-            store.addNote(savedNote, toFolderWithId: folderId)
+        } else if let projectId = parentProjectId {
+            // Adding to a project (works for any nesting depth)
+            store.addNote(savedNote, toProjectWithId: projectId)
         } else {
             // Adding to root
             store.addNote(savedNote)
-        }
-    }
-
-    private func modeDescription(_ mode: NoteMode) -> String {
-        switch mode {
-        case .notes:
-            return "Just taking notes"
-        case .createProject:
-            return "AI creates a new project"
-        case .existingProject:
-            return "AI works on existing code"
         }
     }
 
@@ -464,14 +423,7 @@ struct NoteEditorView: View {
         }
     }
 
-    private func backupToGoogleDrive() {
-        // For Existing Project mode, require a project to be selected
-        if currentMode == .existingProject && selectedProjectId == nil {
-            backupMessage = "Please select a project first.\nUse the 'Select Project' button in the toolbar."
-            showingBackupAlert = true
-            return
-        }
-
+    private func backupToCloud() {
         let backupTitle = title.isEmpty ? "Untitled" : title
 
         #if os(iOS)
@@ -494,10 +446,14 @@ struct NoteEditorView: View {
             return
         }
 
-        // Build path: use mode as subfolder
-        let modeFolder = currentMode.rawValue.replacingOccurrences(of: " ", with: "_")
+        // Build path: project_name/note_title.pdf or just note_title.pdf
         let fileName = "\(backupTitle).pdf"
-        let path = "\(modeFolder)/\(fileName)"
+        let path: String
+        if let projectName = parentProjectName {
+            path = "\(projectName)/\(fileName)"
+        } else {
+            path = fileName
+        }
 
         isBackingUp = true
 
@@ -505,22 +461,9 @@ struct NoteEditorView: View {
             do {
                 let response = try await BackendService.shared.uploadPDF(data: pdfData, path: path)
 
-                // Auto-trigger processing (if backend is in webhook mode)
-                // Pass project_id if we're in existing project mode
-                let projectId = currentMode == .existingProject ? selectedProjectId : nil
-                let triggerResult = await BackendService.shared.trigger(filePath: response.path, projectId: projectId)
-
                 await MainActor.run {
                     isBackingUp = false
-                    if let trigger = triggerResult, trigger.triggered {
-                        var message = "Uploaded & processing:\n\(response.path)\nJob: \(trigger.job?.job_id ?? "unknown")"
-                        if let projName = selectedProjectName, currentMode == .existingProject {
-                            message += "\nTarget: \(projName)"
-                        }
-                        backupMessage = message
-                    } else {
-                        backupMessage = "Uploaded to:\n\(response.path)\n(trigger not available)"
-                    }
+                    backupMessage = "Uploaded to:\n\(response.path)"
                     showingBackupAlert = true
                 }
             } catch {
@@ -528,6 +471,82 @@ struct NoteEditorView: View {
                     isBackingUp = false
                     backupMessage = "Backup failed: \(error.localizedDescription)"
                     showingBackupAlert = true
+                }
+            }
+        }
+    }
+
+    private func executeNote() {
+        let executeTitle = title.isEmpty ? "Untitled" : title
+
+        #if os(iOS)
+        let executePages = [canvasView.drawing.dataRepresentation()]
+        #else
+        let executePages = pages
+        #endif
+
+        // Generate PDF
+        guard let pdfURL = PDFExporter.export(pages: executePages, title: executeTitle) else {
+            executeMessage = "Failed to create PDF"
+            showingExecuteResult = true
+            return
+        }
+
+        // Read PDF data
+        guard let pdfData = try? Data(contentsOf: pdfURL) else {
+            executeMessage = "Failed to read PDF data"
+            showingExecuteResult = true
+            return
+        }
+
+        // Build path: project_name/note_title.pdf or just note_title.pdf
+        let fileName = "\(executeTitle).pdf"
+        let path: String
+        if let projectName = parentProjectName {
+            path = "\(projectName)/\(fileName)"
+        } else {
+            path = fileName
+        }
+
+        isExecuting = true
+
+        Task {
+            do {
+                // Step 1: Upload PDF
+                let uploadResponse = try await BackendService.shared.uploadPDF(data: pdfData, path: path)
+
+                // Step 2: Execute (AI decides what to do)
+                let executeResponse = try await BackendService.shared.execute(
+                    filePath: uploadResponse.path,
+                    projectName: parentProjectName
+                )
+
+                // Step 3: Wait for completion (with timeout)
+                let finalJob = try await BackendService.shared.waitForJob(
+                    jobId: executeResponse.jobId,
+                    pollInterval: 2.0,
+                    timeout: 300  // 5 minutes
+                )
+
+                await MainActor.run {
+                    isExecuting = false
+
+                    if finalJob.status == "completed" {
+                        var message = "✓ Execution completed!\n"
+                        if let outputPath = finalJob.output_path {
+                            message += "Output: \(outputPath)"
+                        }
+                        executeMessage = message
+                    } else {
+                        executeMessage = "✗ Processing failed:\n\(finalJob.error ?? "Unknown error")"
+                    }
+                    showingExecuteResult = true
+                }
+            } catch {
+                await MainActor.run {
+                    isExecuting = false
+                    executeMessage = "Execution failed:\n\(error.localizedDescription)"
+                    showingExecuteResult = true
                 }
             }
         }
@@ -565,9 +584,29 @@ struct PageCanvasView: View {
     }
 
     var body: some View {
-        CanvasView(drawingData: $page.drawingData, currentTool: $currentTool)
-            .frame(width: canvasSize.width, height: canvasSize.height)
-            .onAppear(perform: onAppear)
+        ZStack(alignment: .topTrailing) {
+            CanvasView(drawingData: $page.drawingData, currentTool: $currentTool)
+                .frame(width: canvasSize.width, height: canvasSize.height)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(Color.gray.opacity(0.4), lineWidth: 2)
+                )
+                .onAppear(perform: onAppear)
+
+            // Orientation indicator badge
+            HStack(spacing: 4) {
+                Image(systemName: page.orientation == .portrait ? "rectangle.portrait.fill" : "rectangle.fill")
+                    .font(.caption2)
+                Text(page.orientation == .portrait ? "Portrait" : "Landscape")
+                    .font(.caption2)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.black.opacity(0.6))
+            .foregroundColor(.white)
+            .cornerRadius(4)
+            .padding(8)
+        }
     }
 }
 #endif

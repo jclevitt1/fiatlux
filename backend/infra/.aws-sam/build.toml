@@ -9,11 +9,11 @@ manifest_hash = ""
 packagetype = "Zip"
 functions = ["ApiFunction"]
 
-[function_build_definitions.54b0298c-4b23-4b6e-a75b-c4259978be0f]
+[function_build_definitions.b7be50f1-1a80-494a-a7f7-2bbebb6de2f6]
 packagetype = "Image"
 functions = ["ProcessorFunction"]
 
-[function_build_definitions.54b0298c-4b23-4b6e-a75b-c4259978be0f.metadata]
+[function_build_definitions.b7be50f1-1a80-494a-a7f7-2bbebb6de2f6.metadata]
 DockerTag = "latest"
 DockerContext = "/Users/jeremylevitt/Desktop/FiatLux/backend"
 Dockerfile = "infra/Dockerfile.processor"

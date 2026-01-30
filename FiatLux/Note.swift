@@ -12,29 +12,10 @@ import SwiftUI
 import PencilKit
 #endif
 
-enum NoteMode: String, Codable, CaseIterable {
-    case notes = "Notes"
-    case createProject = "Create Project"
-    case existingProject = "Existing Project"
+// NoteMode removed - no longer needed
+// Notes are now just notes, execution happens via the Execute button
 
-    var icon: String {
-        switch self {
-        case .notes: return "note.text"
-        case .createProject: return "plus.square"
-        case .existingProject: return "folder"
-        }
-    }
-
-    var color: Color {
-        switch self {
-        case .notes: return .blue
-        case .createProject: return .green
-        case .existingProject: return .orange
-        }
-    }
-}
-
-struct Note: Identifiable, Codable, Hashable {
+struct Note: Identifiable, Hashable {
     static func == (lhs: Note, rhs: Note) -> Bool {
         lhs.id == rhs.id
     }
@@ -42,16 +23,12 @@ struct Note: Identifiable, Codable, Hashable {
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }
+
     var id: UUID
     var title: String
     var pages: [PageData]  // Array of page data with orientation
-    var mode: NoteMode
     var createdAt: Date
     var updatedAt: Date
-
-    // For Existing Project mode - the project to modify
-    var selectedProjectId: String?
-    var selectedProjectName: String?
 
     // Legacy support for old Data format
     var drawingData: Data {
@@ -65,15 +42,13 @@ struct Note: Identifiable, Codable, Hashable {
         }
     }
 
-    init(id: UUID = UUID(), title: String = "", pages: [PageData] = [PageData()], mode: NoteMode = .notes, createdAt: Date = Date(), updatedAt: Date = Date(), selectedProjectId: String? = nil, selectedProjectName: String? = nil) {
+    init(id: UUID = UUID(), title: String = "", pages: [PageData] = [PageData()],
+         createdAt: Date = Date(), updatedAt: Date = Date()) {
         self.id = id
         self.title = title
         self.pages = pages.isEmpty ? [PageData()] : pages
-        self.mode = mode
         self.createdAt = createdAt
         self.updatedAt = updatedAt
-        self.selectedProjectId = selectedProjectId
-        self.selectedProjectName = selectedProjectName
     }
 
     #if os(iOS)
@@ -86,4 +61,38 @@ struct Note: Identifiable, Codable, Hashable {
         }
     }
     #endif
+}
+
+// Custom Codable to handle migration (ignore old mode/selectedProject fields)
+extension Note: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case id, title, pages, createdAt, updatedAt
+        // Old keys (ignored during decode, not encoded):
+        // mode, selectedProjectId, selectedProjectName
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        id = try container.decode(UUID.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        pages = try container.decodeIfPresent([PageData].self, forKey: .pages) ?? [PageData()]
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+
+        // Ensure at least one page
+        if pages.isEmpty {
+            pages = [PageData()]
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        try container.encode(id, forKey: .id)
+        try container.encode(title, forKey: .title)
+        try container.encode(pages, forKey: .pages)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(updatedAt, forKey: .updatedAt)
+    }
 }

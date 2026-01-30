@@ -1,13 +1,21 @@
+import os
+
 from .base import StorageProvider
-from .gdrive import GDriveStorage
 from .s3 import S3Storage
-from .dynamodb import UserStore, ProjectStore, get_table_definitions
+from .dynamodb import DynamoDBJobStore, ProjectStore
 
 __all__ = [
     "StorageProvider",
-    "GDriveStorage",
     "S3Storage",
-    "UserStore",
+    "DynamoDBJobStore",
     "ProjectStore",
-    "get_table_definitions",
 ]
+
+# Only import GDrive if not in Lambda (avoids google dependency in Lambda)
+if os.environ.get("AWS_LAMBDA_FUNCTION_NAME") is None:
+    try:
+        from .gdrive import GDriveStorage
+        __all__.append("GDriveStorage")
+    except ImportError:
+        # google libraries not installed, skip GDrive support
+        pass
